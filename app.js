@@ -1045,46 +1045,41 @@
             return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
         };
 
-        let html = `<table class="attendance-table">
-      <thead>
-        <tr>
-          <th>Staff</th>
-          <th>Branch</th>
-          <th>Clock In</th>
-          <th>Clock Out</th>
-          <th>Hours</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>`;
+        let html = '';
 
         entries.forEach(e => {
             const dur = e.clock_out ? new Date(e.clock_out) - new Date(e.clock_in) : null;
             const userName = e.users ? e.users.name : 'Unknown';
-            const bBadge = e.branch ? `<span class="branch-badge">${e.branch}</span>` : '—';
-            const autoBadge = e.auto_clocked_out ? ' <span class="auto-badge" title="Auto clocked out">\u26a0\ufe0f</span>' : '';
+            const bBadge = e.branch ? `<span class="branch-badge">${e.branch}</span>` : '';
+            const autoBadge = e.auto_clocked_out ? ' <span class="auto-badge" title="Auto clocked out">⚠️</span>' : '';
+            const durText = dur ? formatHours(dur) : '<span style="color:var(--green);font-weight:600;">● Active</span>';
 
             const inVal  = formatEditableDate(e.clock_in);
             const outVal = formatEditableDate(e.clock_out);
 
-            html += `<tr>
-        <td data-label="Staff" style="font-weight:500;">${userName}${autoBadge}</td>
-        <td data-label="Branch">${bBadge}</td>
-        <td data-label="Clock In">
-          <input type="datetime-local" class="inline-edit-input" id="edit-in-${e.id}" value="${inVal}">
-        </td>
-        <td data-label="Clock Out">
-          <input type="datetime-local" class="inline-edit-input" id="edit-out-${e.id}" value="${outVal}">
-        </td>
-        <td data-label="Hours">${dur ? formatHours(dur) : '<span style="color:var(--green)">Active</span>'}</td>
-        <td data-label="Actions" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-          <button class="btn btn-save-sm" onclick="window.saveAttendanceEdit('${e.id}')">Save</button>
-          <button class="btn btn-sm btn-outline" style="color:var(--red); border-color:var(--red); padding:4px 10px; font-size:12px;" onclick="window.deleteAttendanceEntry('${e.id}')">🗑 Del</button>
-        </td>
-      </tr>`;
+            html += `
+            <div class="att-card">
+              <div class="att-card-top">
+                <span class="att-name">${userName}${autoBadge}</span>
+                <span class="att-meta">${bBadge} <span class="att-dur">${durText}</span></span>
+              </div>
+              <div class="att-card-inputs">
+                <div class="att-field">
+                  <span class="att-label">In</span>
+                  <input type="datetime-local" class="att-input" id="edit-in-${e.id}" value="${inVal}">
+                </div>
+                <div class="att-field">
+                  <span class="att-label">Out</span>
+                  <input type="datetime-local" class="att-input" id="edit-out-${e.id}" value="${outVal}">
+                </div>
+              </div>
+              <div class="att-card-actions">
+                <button class="btn btn-save-sm" onclick="window.saveAttendanceEdit('${e.id}')">✓ Save</button>
+                <button class="btn btn-sm btn-outline att-del-btn" onclick="window.deleteAttendanceEntry('${e.id}')">🗑 Delete</button>
+              </div>
+            </div>`;
         });
 
-        html += `</tbody></table>`;
         container.innerHTML = html;
     }
 

@@ -1588,6 +1588,98 @@ section.active {
 }
 
 /* Attendance Table */
+/* ===== ATTENDANCE CARDS (mobile-first) ===== */
+.att-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.att-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.att-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.att-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.att-dur {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.att-card-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.att-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.att-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    min-width: 24px;
+    flex-shrink: 0;
+}
+
+.att-input {
+    flex: 1;
+    width: 100%;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: white;
+    font-family: var(--font);
+    font-size: 12px;
+    outline: none;
+    min-width: 0;
+}
+
+.att-input:focus {
+    border-color: var(--blue);
+    background: rgba(67, 97, 238, 0.08);
+}
+
+.att-card-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.att-del-btn {
+    color: var(--red) !important;
+    border-color: var(--red) !important;
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+}
+
 .attendance-table {
     width: 100%;
     border-collapse: collapse;
