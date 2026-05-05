@@ -1592,20 +1592,23 @@ section.active {
     width: 100%;
     border-collapse: collapse;
     text-align: left;
+    font-size: var(--fs-xs);
 }
 
 .attendance-table th,
 .attendance-table td {
-    padding: 12px;
+    padding: 8px 10px;
     border-bottom: 1px solid var(--border-glass);
+    vertical-align: middle;
 }
 
 .attendance-table th {
     color: var(--text-muted);
     font-weight: 500;
-    font-size: var(--fs-xs);
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    white-space: nowrap;
 }
 
 .attendance-table tbody tr:hover {
@@ -1613,13 +1616,62 @@ section.active {
 }
 
 .inline-edit-input {
-    width: 80px;
-    padding: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid var(--primary);
-    border-radius: 4px;
+    width: 150px;
+    padding: 4px 6px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
     color: white;
     font-family: var(--font);
+    font-size: 11px;
+}
+
+/* ── Mobile card-stack for attendance ── */
+@media (max-width: 680px) {
+    .attendance-table thead {
+        display: none;
+    }
+    .attendance-table,
+    .attendance-table tbody,
+    .attendance-table tr,
+    .attendance-table td {
+        display: block;
+        width: 100%;
+    }
+    .attendance-table tr {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        margin-bottom: 10px;
+        padding: 10px 12px;
+    }
+    .attendance-table td {
+        border: none;
+        padding: 4px 0;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .attendance-table td::before {
+        content: attr(data-label);
+        font-size: 10px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        min-width: 64px;
+        flex-shrink: 0;
+    }
+    .attendance-table td[data-label="Actions"] {
+        margin-top: 6px;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .inline-edit-input {
+        width: 100%;
+        flex: 1;
+        font-size: 12px;
+    }
 }
 
 .edit-points-container {
@@ -1921,7 +1973,7 @@ section.active {
 
     .attendance-table th,
     .attendance-table td {
-        padding: 8px 6px;
+        padding: 6px 4px;
     }
 }
 

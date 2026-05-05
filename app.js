@@ -1068,16 +1068,16 @@
             const outVal = formatEditableDate(e.clock_out);
 
             html += `<tr>
-        <td style="font-weight:500;">${userName}${autoBadge}</td>
-        <td>${bBadge}</td>
-        <td>
-          <input type="datetime-local" class="inline-edit-input" style="width:auto;" id="edit-in-${e.id}" value="${inVal}">
+        <td data-label="Staff" style="font-weight:500;">${userName}${autoBadge}</td>
+        <td data-label="Branch">${bBadge}</td>
+        <td data-label="Clock In">
+          <input type="datetime-local" class="inline-edit-input" id="edit-in-${e.id}" value="${inVal}">
         </td>
-        <td>
-          <input type="datetime-local" class="inline-edit-input" style="width:auto;" id="edit-out-${e.id}" value="${outVal}">
+        <td data-label="Clock Out">
+          <input type="datetime-local" class="inline-edit-input" id="edit-out-${e.id}" value="${outVal}">
         </td>
-        <td>${dur ? formatHours(dur) : '<span style="color:var(--green)">Active</span>'}</td>
-        <td style="display:flex; gap:6px; align-items:center;">
+        <td data-label="Hours">${dur ? formatHours(dur) : '<span style="color:var(--green)">Active</span>'}</td>
+        <td data-label="Actions" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
           <button class="btn btn-save-sm" onclick="window.saveAttendanceEdit('${e.id}')">Save</button>
           <button class="btn btn-sm btn-outline" style="color:var(--red); border-color:var(--red); padding:4px 10px; font-size:12px;" onclick="window.deleteAttendanceEntry('${e.id}')">🗑 Del</button>
         </td>
