@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="StaffSync — Modern staff management, time tracking, and payroll dashboard for businesses.">
+    <title>StaffSync — Staff Management</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="StaffSync">
+    <link rel="stylesheet" href="styles.css">
+    <!-- Supabase JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- QR Code Generator -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- QR Code Scanner -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js');
+            });
+        }
+    </script>
+</head>
+
+<body>
+    <div id="app">
+
+        <!-- ========== LOGIN ========== -->
+        <section id="view-login" class="auth-view active">
+            <div class="auth-container">
+                <div class="auth-card glass">
+                    <div class="brand">
+                        <img src="logo.png" alt="SmartStaffs Logo" class="brand-logo-img">
+                        <p class="tagline">Smart Staff Management</p>
+                    </div>
+                    <form id="form-login" autocomplete="off">
+                        <div class="input-group">
+                            <label for="login-email">Email or Mobile</label>
+                            <input type="text" id="login-email" placeholder="you@company.com or 07xxxxxxxxx" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="login-password">Password</label>
+                            <input type="password" id="login-password" placeholder="••••••••" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">Sign In</button>
+                    </form>
+                    <p class="auth-switch">Don't have an account? <a href="#" id="goto-signup">Sign Up</a></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== SIGNUP ========== -->
+        <section id="view-signup" class="auth-view">
+            <div class="auth-container">
+                <div class="auth-card glass">
+                    <div class="brand">
+                        <img src="logo.png" alt="SmartStaffs Logo" class="brand-logo-img">
+                        <p class="tagline">Create your account</p>
+                    </div>
+                    <form id="form-signup" autocomplete="off">
+                        <div class="input-group">
+                            <label for="signup-name">Full Name</label>
+                            <input type="text" id="signup-name" placeholder="John Smith" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="signup-email">Email or Mobile</label>
+                            <input type="text" id="signup-email" placeholder="you@company.com or 07xxxxxxxxx" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="signup-password">Password</label>
+                            <input type="password" id="signup-password" placeholder="Min 6 characters" required
+                                minlength="6">
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">Create Account</button>
+                    </form>
+                    <p class="auth-switch">Already have an account? <a href="#" id="goto-login">Sign In</a></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== CHOOSE ROLE (after signup) ========== -->
+        <section id="view-choose-role" class="auth-view">
+            <div class="auth-container">
+                <div class="role-card glass">
+                    <h2>What would you like to do?</h2>
+                    <p class="tagline">Choose how you want to use SmartStaffs</p>
+                    <div class="role-options">
+                        <button class="role-btn" id="btn-create-company">
+                            <span class="role-icon">🏢</span>
+                            <span class="role-title">Create a Company</span>
+                            <span class="role-desc">Set up your business and manage staff</span>
+                        </button>
+                        <button class="role-btn" id="btn-join-company">
+                            <span class="role-icon">🤝</span>
+                            <span class="role-title">Join a Company</span>
+                            <span class="role-desc">Request to join an existing company</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== CREATE COMPANY ========== -->
+        <section id="view-create-company" class="auth-view">
+            <div class="auth-container">
+                <div class="auth-card glass">
+                    <div class="brand">
+                        <span class="brand-icon">🏢</span>
+                        <h1>Create Company</h1>
+                        <p class="tagline">You'll be the company owner</p>
+                    </div>
+                    <form id="form-create-company" autocomplete="off">
+                        <div class="input-group">
+                            <label for="company-name">Company Name</label>
+                            <input type="text" id="company-name" placeholder="Acme Corp" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="company-hourly-rate">Hourly Rate (£)</label>
+                            <input type="number" id="company-hourly-rate" placeholder="12.50" step="0.01" min="0"
+                                required>
+                        </div>
+                        <div class="input-group">
+                            <label for="company-payment-proof">Payment Proof 📷</label>
+                            <input type="file" id="company-payment-proof" accept="image/*" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="company-business-proof">Business License/Place Proof 📷</label>
+                            <input type="file" id="company-business-proof" accept="image/*" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">Create Company</button>
+                    </form>
+                    <p class="auth-switch"><a href="#" id="back-to-role-from-create">← Back</a></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== JOIN COMPANY ========== -->
+        <section id="view-join-company" class="auth-view">
+            <div class="auth-container">
+                <div class="auth-card glass">
+                    <div class="brand">
+                        <span class="brand-icon">🤝</span>
+                        <h1>Join Company</h1>
+                        <p class="tagline">Enter the company code to send a join request</p>
+                    </div>
+                    <form id="form-join-company" autocomplete="off">
+                        <div class="input-group">
+                            <label for="join-code">Company Code</label>
+                            <input type="text" id="join-code" placeholder="e.g. ACME-7X3F" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">Send Join Request</button>
+                    </form>
+                    <p class="auth-switch"><a href="#" id="back-to-role-from-join">← Back</a></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== WAITING FOR APPROVAL ========== -->
+        <section id="view-waiting" class="auth-view">
+            <div class="auth-container">
+                <div class="auth-card glass centered">
+                    <div class="waiting-icon">⏳</div>
+                    <h2>Waiting for Approval</h2>
+                    <p class="tagline">Your join request has been sent to the company owner.<br>You'll be able to access
+                        the
+                        dashboard once approved.</p>
+                    <div class="status-badge pending">PENDING</div>
+                    <button class="btn btn-outline" id="btn-refresh-status">Refresh Status</button>
+                    <p class="auth-switch"><a href="#" id="btn-logout-waiting">Sign Out</a></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== REJECTED ========== -->
+        <section id="view-rejected" class="auth-view">
+            <div class="auth-container">
+                <div class="auth-card glass centered">
+                    <div class="waiting-icon">❌</div>
+                    <h2>Access Denied</h2>
+                    <p class="tagline">Your join request was rejected by the company owner.</p>
+                    <div class="status-badge rejected">REJECTED</div>
+                    <button class="btn btn-outline" id="btn-logout-rejected">Sign Out</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== OWNER WAITING FOR APPROVAL ========== -->
+        <section id="view-owner-waiting" class="auth-view">
+            <div class="auth-container">
+                <div class="auth-card glass centered">
+                    <div class="waiting-icon">⏳</div>
+                    <h2>Business Under Review</h2>
+                    <p class="tagline">Your business is under review.<br>Please wait for approval by the Super Admin
+                        before
+                        accessing the platform.</p>
+                    <div class="status-badge pending">PENDING</div>
+                    <button class="btn btn-primary" id="btn-refresh-owner-status" style="margin-top:20px;">Refresh
+                        Status</button>
+                    <p class="auth-switch"><a href="#" id="btn-logout-owner-waiting">Sign Out</a></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== SUPER ADMIN DASHBOARD ========== -->
+        <section id="view-super-admin-dashboard" class="dashboard-view">
+            <nav class="sidebar glass">
+                <div class="sidebar-brand" style="justify-content:center; padding:16px;">
+                    <img src="logo.png" alt="SmartStaffs Admin" class="sidebar-brand-logo">
+                </div>
+                <ul class="nav-links">
+                    <li><a href="#" class="nav-link active" data-tab="admin-businesses">
+                            <span class="nav-icon">📋</span> All Businesses
+                        </a></li>
+                    <li><a href="#" class="nav-link" data-tab="admin-profile">
+                            <span class="nav-icon">👤</span> My Profile
+                        </a></li>
+                    <li class="mobile-only-nav"><a href="#" class="nav-link" id="btn-logout-admin-mobile">
+                            <span class="nav-icon">🚪</span> Sign Out
+                        </a></li>
+                </ul>
+                <div class="sidebar-footer">
+                    <div class="user-info">
+                        <div class="avatar">A</div>
+                        <div>
+                            <div class="user-name">Super Admin</div>
+                            <div class="user-role">System Master</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline" id="btn-logout-admin">Sign Out</button>
+                </div>
+            </nav>
+            <main class="dashboard-main">
+                <header class="dashboard-header">
+                    <div>
+                        <h2 id="admin-dashboard-title">All Businesses</h2>
+                        <p class="company-code-display">Master Control Panel</p>
+                    </div>
+                </header>
+
+                <!-- Admin Tab: All Businesses -->
+                <div class="tab-content active" id="tab-admin-businesses">
+                    <div class="actions-bar">
+                        <h3>Registered Businesses</h3>
+                        <button class="btn btn-outline" id="btn-refresh-admin">Refresh List</button>
+                    </div>
+                    <div class="search-bar-wrapper" style="margin-bottom: 16px;">
+                        <input
+                            type="text"
+                            id="admin-owner-search"
+                            placeholder="🔍  Search by owner name, email or company…"
+                            style="width:100%; padding:12px 16px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); border-radius:12px; color:var(--text-primary); font-family:var(--font); font-size:var(--fs-sm); outline:none; transition:all 0.2s;"
+                        >
+                    </div>
+                    <div class="staff-grid" id="admin-businesses-list">
+                        <!-- Rendered via JS -->
+                    </div>
+                </div>
+
+                <!-- Admin Tab: My Profile -->
+                <div class="tab-content" id="tab-admin-profile">
+                    <div class="profile-container glass">
+                        <div class="profile-header">
+                            <div class="profile-avatar-wrapper">
+                                <div class="profile-avatar-preview" id="admin-profile-avatar-preview">A</div>
+                                <input type="file" id="admin-profile-upload" accept="image/*"
+                                    class="profile-upload-input">
+                                <div class="profile-upload-overlay"
+                                    onclick="document.getElementById('admin-profile-upload').click()">📷
+                                </div>
+                            </div>
+                            <div>
+                                <h3 id="admin-profile-name">Super Admin</h3>
+                                <p id="admin-profile-email" class="sub-meta">vigneswarangnanavel.com</p>
+                                <span class="status-badge"
+                                    style="background:var(--blue);color:white;margin-top:8px;">Super Admin</span>
+                            </div>
+                        </div>
+                        <div class="profile-actions" style="margin-top: 30px; display: flex; gap: 10px;">
+                            <button class="btn btn-outline" id="btn-admin-switch-account">Switch Account</button>
+                            <button class="btn btn-outline" id="btn-admin-profile-logout"
+                                style="border-color:var(--red); color:var(--red);">Sign Out</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </section>
+
+        <!-- ========== OWNER DASHBOARD ========== -->
+        <section id="view-owner-dashboard" class="dashboard-view">
+            <nav class="sidebar glass">
+                <div class="sidebar-brand" style="justify-content:center; padding:16px;">
+                    <img src="logo.png" alt="SmartStaffs" class="sidebar-brand-logo">
+                </div>
+                <ul class="nav-links">
+                    <li><a href="#" class="nav-link" data-tab="owner-salary">
+                            <span class="nav-icon">💷</span> Salary Reports
+                        </a></li>
+                    <li><a href="#" class="nav-link" data-tab="owner-tasks">
+                            <span class="nav-icon">🎯</span> Tasks
+                        </a></li>
+                    <li><a href="#" class="nav-link" data-tab="owner-submissions">
+                            <span class="nav-icon">📸</span> Submissions
+                        </a></li>
+                    <li><a href="#" class="nav-link" data-tab="owner-attendance">
+                            <span class="nav-icon">📋</span> Attendance
+                        </a></li>
+                    <li><a href="#" class="nav-link" data-tab="owner-qrcodes">
+                            <span class="nav-icon">📱</span> QR Codes
+                        </a></li>
+                </ul>
+                <div class="sidebar-footer">
+                    <div class="user-info">
+                        <div class="avatar" id="owner-avatar">O</div>
+                        <div>
+                            <div class="user-name" id="owner-name">Owner</div>
+                            <div class="user-role">Company Owner</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline" id="btn-logout-owner">Sign Out</button>
+                </div>
+            </nav>
+            <main class="dashboard-main">
+                <header class="dashboard-header top-nav-header">
+                    <div class="top-nav-left">
+                        <div class="hamburger-container">
+                            <button class="hamburger-btn" id="btn-owner-hamburger">☰</button>
+                            <div class="dropdown-menu glass" id="dropdown-owner">
+                                <ul class="nav-links-dropdown">
+                                    <li><a href="#" class="nav-link active" data-tab="owner-requests"><span
+                                                class="nav-icon">📋</span>
+                                            Join Requests</a></li>
+                                    <li><a href="#" class="nav-link" data-tab="owner-staff"><span
+                                                class="nav-icon">👥</span> Staff
+                                            List</a></li>
+                                    <li><a href="#" class="nav-link" data-tab="owner-settings"><span
+                                                class="nav-icon">⚙️</span>
+                                            Settings</a></li>
+                                    <li><a href="#" class="nav-link" data-tab="owner-profile"><span
+                                                class="nav-icon">👤</span> My
+                                            Profile</a></li>
+                                    <li><a href="#" class="nav-link" id="btn-logout-owner-dropdown"
+                                            style="color:var(--red);"><span class="nav-icon">🚪</span> Sign Out</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <h2 id="owner-dashboard-title">Join Requests</h2>
+                            <p class="company-code-display">Company Code: <span id="display-company-code"
+                                    class="code-badge">—</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="top-nav-right">
+                        <a href="#" class="nav-link top-nav-icon-btn" data-tab="owner-notifications"
+                            style="position:relative;">
+                            <span style="font-size:24px;">🔔</span>
+                            <span class="badge" id="owner-notif-badge"
+                                style="display:none; background:var(--red); color:white; border-radius:50px; padding:2px 6px; font-size:10px; position:absolute; top:-5px; right:-10px;">0</span>
+                        </a>
+                    </div>
+                </header>
+
+                <!-- Owner Tab: Join Requests -->
+                <div class="tab-content active" id="tab-owner-requests">
+                    <div class="card glass" id="requests-container">
+                        <p class="empty-state">No pending requests</p>
+                    </div>
+                </div>
+
+                <!-- Owner Tab: Staff List -->
+                <div class="tab-content" id="tab-owner-staff">
+                    <div class="card glass" id="staff-list-container">
+                        <p class="empty-state">No approved staff yet</p>
+                    </div>
+                </div>
+
+                <!-- Owner Tab: Salary Reports -->
+                <div class="tab-content" id="tab-owner-salary">
+                    <div class="salary-controls glass" style="flex-wrap: wrap; gap: 12px; justify-content: flex-start;">
+                        <div class="input-group inline" style="flex:1; min-width:150px;">
+                            <label>Date From</label>
+                            <input type="date" id="salary-date-from"
+                                style="width:100%; padding:8px; border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:white;">
+                        </div>
+                        <div class="input-group inline" style="flex:1; min-width:150px;">
+                            <label>Date To</label>
+                            <input type="date" id="salary-date-to"
+                                style="width:100%; padding:8px; border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:white;">
+                        </div>
+                        <div class="input-group inline" style="flex:1; min-width:200px;">
+                            <label>Staff Member</label>
+                            <select id="salary-staff-filter"
+                                style="width:100%; padding:8px; border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,0.1); background:var(--bg-secondary); color:white;">
+                                <option value="all">All Staff</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card glass" id="salary-report-container">
+                        <p class="empty-state">No salary data yet</p>
+                    </div>
+                </div>
+
+                <!-- Owner Tab: Tasks -->
+                <div class="tab-content" id="tab-owner-tasks">
+                    <div class="card glass">
+                        <h3>Create New Task</h3>
+                        <form id="form-create-task" autocomplete="off">
+                            <div class="input-group">
+                                <label for="task-title">Task Title</label>
+                                <input type="text" id="task-title" placeholder="e.g. Clean the Store" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="task-description">Description</label>
+                                <input type="text" id="task-description" placeholder="Detailed instructions…" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="task-reward">Reward Points</label>
+                                <input type="number" id="task-reward" placeholder="e.g. 500" min="1" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">➕ Create Task</button>
+                        </form>
+                    </div>
+                    <div class="card glass">
+                        <h3>Active Tasks</h3>
+                        <div id="owner-tasks-list">
+                            <p class="empty-state">No tasks created yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Owner Tab: Submissions -->
+                <div class="tab-content" id="tab-owner-submissions">
+                    <div class="card glass">
+                        <h3>Pending Submissions</h3>
+                        <div id="owner-submissions-pending">
+                            <p class="empty-state">No pending submissions</p>
+                        </div>
+                    </div>
+                    <div class="card glass">
+                        <h3>Approved Submissions</h3>
+                        <div id="owner-submissions-approved">
+                            <p class="empty-state">No approved submissions yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Owner Tab: Attendance -->
+                <div class="tab-content" id="tab-owner-attendance">
+                    <div class="salary-controls glass" style="flex-wrap:wrap; gap:12px;">
+                        <div class="input-group inline" style="flex:1; min-width:130px;">
+                            <label>Period</label>
+                            <select id="attendance-period">
+                                <option value="daily">Today</option>
+                                <option value="weekly" selected>This Week</option>
+                                <option value="monthly">This Month</option>
+                                <option value="custom">Custom Range</option>
+                            </select>
+                        </div>
+                        <div class="input-group inline" style="flex:1; min-width:130px;">
+                            <label>Branch</label>
+                            <select id="attendance-branch-filter">
+                                <option value="all">All Branches</option>
+                            </select>
+                        </div>
+                        <div id="attendance-custom-range" style="display:none; width:100%; display:none; gap:12px; flex-wrap:wrap;">
+                            <div class="input-group inline" style="flex:1; min-width:140px;">
+                                <label>Date From</label>
+                                <input type="date" id="attendance-date-from" style="width:100%; padding:8px; border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:white;">
+                            </div>
+                            <div class="input-group inline" style="flex:1; min-width:140px;">
+                                <label>Date To</label>
+                                <input type="date" id="attendance-date-to" style="width:100%; padding:8px; border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:white;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card glass">
+                        <h3>Staff Attendance</h3>
+                        <div id="owner-attendance-list">
+                            <p class="empty-state">No attendance data yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Owner Tab: QR Codes -->
+                <div class="tab-content" id="tab-owner-qrcodes">
+                    <div class="card glass" style="margin-bottom:16px;">
+                        <h3 style="margin-bottom:4px;">📱 QR Codes for Clock In/Out</h3>
+                        <p style="color:var(--text-secondary); font-size:var(--fs-sm);">Each QR code is unique to a branch. Staff scan it to instantly clock in or out.</p>
+                    </div>
+                    <div id="qr-codes-container" style="display:flex; flex-wrap:wrap; gap:20px;">
+                        <p class="empty-state">Loading QR codes…</p>
+                    </div>
+                </div>
+
+                <!-- Owner Tab: Settings -->
+                <div class="tab-content" id="tab-owner-settings">
+                    <div class="card glass">
+                        <h3>Company Settings</h3>
+                        <form id="form-company-settings">
+                            <div class="input-group">
+                                <label for="setting-company-name">Company Name</label>
+                                <input type="text" id="setting-company-name" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="setting-hourly-rate">Hourly Rate (£)</label>
+                                <input type="number" id="setting-hourly-rate" step="0.01" min="0" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Settings</button>
+                        </form>
+                    </div>
+                    <div class="card glass">
+                        <h3>Branches</h3>
+                        <p class="section-hint">Staff will select a branch when clocking in</p>
+                        <div id="branches-list"></div>
+                        <div style="display:flex; gap:8px; margin-top:12px;">
+                            <input type="text" id="new-branch-name" placeholder="e.g. Main Store, Warehouse"
+                                style="flex:1; padding:10px 14px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:8px; color:#f1f5f9; font-family:var(--font);">
+                            <button class="btn btn-primary" id="btn-add-branch">➕ Add</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Owner Tab: Notifications -->
+                <div class="tab-content" id="tab-owner-notifications">
+                    <div class="actions-bar" style="margin-bottom: 16px;">
+                        <h3>Notifications</h3>
+                        <button class="btn btn-outline" id="btn-read-all-notifs-owner">Mark All as Read</button>
+                    </div>
+                    <div class="notif-list" id="owner-notif-list" style="display:flex; flex-direction:column; gap:8px;">
+                        <p class="empty-state">No notifications. You're all caught up!</p>
+                    </div>
+                </div>
+
+                <!-- Owner Tab: My Profile -->
+                <div class="tab-content" id="tab-owner-profile">
+                    <div class="profile-container glass">
+                        <div class="profile-header">
+                            <div class="profile-avatar-wrapper">
+                                <div class="profile-avatar-preview" id="owner-profile-avatar-preview">O</div>
+                                <input type="file" id="owner-profile-upload" accept="image/*"
+                                    class="profile-upload-input">
+                                <div class="profile-upload-overlay"
+                                    onclick="document.getElementById('owner-profile-upload').click()">📷
+                                </div>
+                            </div>
+                            <div>
+                                <h3 id="owner-profile-name">Owner Name</h3>
+                                <p id="owner-profile-email" class="sub-meta">owner@email.com</p>
+                                <span class="status-badge"
+                                    style="background:var(--blue);color:white;margin-top:8px;">Company
+                                    Owner</span>
+                            </div>
+                        </div>
+                        <div class="profile-actions" style="margin-top: 30px; display: flex; gap: 10px;">
+                            <button class="btn btn-outline" id="btn-owner-switch-account">Switch Account</button>
+                            <button class="btn btn-outline" id="btn-owner-profile-logout"
+                                style="border-color:var(--red); color:var(--red);">Sign Out</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </section>
+
+        <!-- ========== STAFF DASHBOARD ========== -->
+        <section id="view-staff-dashboard" class="dashboard-view">
+            <nav class="sidebar glass">
+                <div class="sidebar-brand" style="justify-content:center; padding:16px;">
+                    <img src="logo.png" alt="SmartStaffs" class="sidebar-brand-logo">
+                </div>
+                <ul class="nav-links">
+                    <li><a href="#" class="nav-link active" data-tab="staff-clock">
+                            <span class="nav-icon">⏱️</span> Clock In/Out
+                        </a></li>
+                    <li><a href="#" class="nav-link" data-tab="staff-hours">
+                            <span class="nav-icon">📊</span> My Hours
+                        </a></li>
+                    <li><a href="#" class="nav-link" data-tab="staff-tasks">
+                            <span class="nav-icon">🎯</span> Tasks
+                        </a></li>
+                    <li><a href="#" class="nav-link" data-tab="staff-rewards">
+                            <span class="nav-icon">🪙</span> Rewards
+                        </a></li>
+                </ul>
+                <div class="sidebar-footer">
+                    <div class="user-info">
+                        <div class="avatar" id="staff-avatar">S</div>
+                        <div>
+                            <div class="user-name" id="staff-name">Staff</div>
+                            <div class="user-role">Staff Member</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline" id="btn-logout-staff">Sign Out</button>
+                </div>
+            </nav>
+            <main class="dashboard-main">
+                <header class="dashboard-header top-nav-header">
+                    <div class="top-nav-left">
+                        <div class="hamburger-container">
+                            <button class="hamburger-btn" id="btn-staff-hamburger">☰</button>
+                            <div class="dropdown-menu glass" id="dropdown-staff">
+                                <ul class="nav-links-dropdown">
+                                    <li><a href="#" class="nav-link" data-tab="staff-profile"><span
+                                                class="nav-icon">👤</span> My
+                                            Profile</a></li>
+                                    <li><a href="#" class="nav-link" data-tab="staff-earnings"><span
+                                                class="nav-icon">💷</span>
+                                            Earnings</a></li>
+                                    <li><a href="#" class="nav-link" id="btn-logout-staff-dropdown"
+                                            style="color:var(--red);"><span class="nav-icon">🚪</span> Sign Out</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <h2 id="staff-dashboard-title">Clock In / Out</h2>
+                            <p class="company-name-display" id="staff-company-name">—</p>
+                        </div>
+                    </div>
+
+                    <div class="top-nav-right">
+                        <a href="#" class="nav-link top-nav-icon-btn" data-tab="staff-notifications"
+                            style="position:relative;">
+                            <span style="font-size:24px;">🔔</span>
+                            <span class="badge" id="staff-notif-badge"
+                                style="display:none; background:var(--red); color:white; border-radius:50px; padding:2px 6px; font-size:10px; position:absolute; top:-5px; right:-10px;">0</span>
+                        </a>
+                    </div>
+                </header>
+
+                <!-- Staff Tab: Clock In/Out -->
+                <div class="tab-content active" id="tab-staff-clock">
+                    <div class="clock-section">
+                        <div class="clock-card glass">
+                            <div class="live-time" id="live-clock">00:00:00</div>
+                            <div class="clock-date" id="live-date">—</div>
+                            <div class="clock-status" id="clock-status">Not clocked in</div>
+                            <div class="clock-elapsed" id="clock-elapsed"></div>
+                            <!-- Hidden: kept for JS state management -->
+                            <div id="branch-select-wrapper" style="display:none;">
+                                <select id="clock-branch-select"><option value="">Select branch…</option></select>
+                            </div>
+                            <div id="btn-clock-in" style="display:none;"></div>
+                            <div id="btn-clock-out" style="display:none;"></div>
+
+                            <!-- QR Scan Button -->
+                            <div class="qr-scan-btn-wrapper">
+                                <button id="btn-open-qr-scanner" class="qr-scan-btn">
+                                    <div class="qr-scan-rings">
+                                        <div class="qr-ring qr-ring-1"></div>
+                                        <div class="qr-ring qr-ring-2"></div>
+                                        <div class="qr-ring qr-ring-3"></div>
+                                    </div>
+                                    <div class="qr-scan-icon">
+                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                            <rect x="3" y="3" width="7" height="7" rx="1"/>
+                                            <rect x="14" y="3" width="7" height="7" rx="1"/>
+                                            <rect x="3" y="14" width="7" height="7" rx="1"/>
+                                            <rect x="14" y="14" width="3" height="3" rx="0.5"/>
+                                            <rect x="19" y="14" width="2" height="2" rx="0.5"/>
+                                            <rect x="14" y="19" width="2" height="2" rx="0.5"/>
+                                            <rect x="18" y="18" width="3" height="3" rx="0.5"/>
+                                        </svg>
+                                    </div>
+                                    <span class="qr-scan-label">Tap to Scan QR &amp; Clock In/Out</span>
+                                    <span class="qr-scan-sublabel" id="qr-btn-status">Point camera at your branch QR code</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card glass" id="today-entries">
+                        <h3>Recent Entries</h3>
+                        <div id="today-entries-list">
+                            <p class="empty-state">No clock-in history yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Staff Tab: My Hours -->
+                <div class="tab-content" id="tab-staff-hours">
+                    <div class="stats-row">
+                        <div class="stat-card glass">
+                            <div class="stat-value" id="stat-today-hours">0h 0m</div>
+                            <div class="stat-label">Today</div>
+                        </div>
+                        <div class="stat-card glass">
+                            <div class="stat-value" id="stat-week-hours">0h 0m</div>
+                            <div class="stat-label">This Week</div>
+                        </div>
+                        <div class="stat-card glass">
+                            <div class="stat-value" id="stat-month-hours">0h 0m</div>
+                            <div class="stat-label">This Month</div>
+                        </div>
+                    </div>
+
+                    <!-- Date filter for history -->
+                    <div class="salary-controls glass" style="flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+                        <div class="input-group inline" style="flex:1; min-width:140px;">
+                            <label>From</label>
+                            <input type="date" id="hours-filter-from" style="width:100%; padding:8px; border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:white;">
+                        </div>
+                        <div class="input-group inline" style="flex:1; min-width:140px;">
+                            <label>To</label>
+                            <input type="date" id="hours-filter-to" style="width:100%; padding:8px; border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:white;">
+                        </div>
+                        <button class="btn btn-outline btn-sm" id="btn-hours-filter-apply" style="align-self:flex-end;">🔍 Filter</button>
+                        <button class="btn btn-sm" id="btn-hours-filter-clear" style="align-self:flex-end; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:var(--text-secondary);">✕ Clear</button>
+                    </div>
+
+                    <!-- Filtered totals summary -->
+                    <div class="card glass" id="hours-filter-summary" style="display:none; margin-bottom:16px;">
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; text-align:center;">
+                            <div>
+                                <div style="font-size:22px; font-weight:700; color:var(--accent-light);" id="filter-total-hours">0h 0m</div>
+                                <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Total Hours</div>
+                            </div>
+                            <div>
+                                <div style="font-size:22px; font-weight:700; color:var(--green);" id="filter-total-pay">£0.00</div>
+                                <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Total Pay</div>
+                            </div>
+                            <div>
+                                <div style="font-size:22px; font-weight:700; color:var(--text-primary);" id="filter-total-sessions">0</div>
+                                <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Sessions</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card glass" id="hours-history">
+                        <h3>History</h3>
+                        <div id="hours-history-list">
+                            <p class="empty-state">No history yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Staff Tab: Earnings -->
+                <div class="tab-content" id="tab-staff-earnings">
+                    <div class="stats-row">
+                        <div class="stat-card glass accent">
+                            <div class="stat-value" id="stat-today-earnings">£0.00</div>
+                            <div class="stat-label">Today</div>
+                        </div>
+                        <div class="stat-card glass accent">
+                            <div class="stat-value" id="stat-week-earnings">£0.00</div>
+                            <div class="stat-label">This Week</div>
+                        </div>
+                        <div class="stat-card glass accent">
+                            <div class="stat-value" id="stat-month-earnings">£0.00</div>
+                            <div class="stat-label">This Month</div>
+                        </div>
+                    </div>
+                    <div class="card glass">
+                        <div class="rate-display">
+                            <span>Your Hourly Rate:</span>
+                            <span class="rate-value" id="staff-hourly-rate">£0.00/hr</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Staff Tab: Tasks -->
+                <div class="tab-content" id="tab-staff-tasks">
+                    <div class="card glass">
+                        <h3>Available Tasks</h3>
+                        <p class="section-hint">Complete tasks and upload proof to earn reward points</p>
+                        <div id="staff-tasks-list">
+                            <p class="empty-state">No tasks available right now</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Staff Tab: Rewards -->
+                <div class="tab-content" id="tab-staff-rewards">
+                    <div class="stats-row">
+                        <div class="stat-card glass reward-card">
+                            <div class="stat-icon">🎯</div>
+                            <div class="stat-value" id="stat-total-points">0</div>
+                            <div class="stat-label">Total Points</div>
+                        </div>
+                        <div class="stat-card glass reward-card coin-card">
+                            <div class="stat-icon">🪙</div>
+                            <div class="stat-value" id="stat-total-coins">0</div>
+                            <div class="stat-label">Coins Earned</div>
+                        </div>
+                    </div>
+                    <div class="card glass">
+                        <div class="coin-formula">
+                            <span class="formula-label">Conversion Rate</span>
+                            <span class="formula-value">1,000 Points = 1 🪙 Coin</span>
+                        </div>
+                    </div>
+                    <div class="card glass">
+                        <h3>My Submissions</h3>
+                        <div id="staff-submissions-list">
+                            <p class="empty-state">No submissions yet — complete a task to earn points!</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Staff Tab: Notifications -->
+                <div class="tab-content" id="tab-staff-notifications">
+                    <div class="actions-bar" style="margin-bottom: 16px;">
+                        <h3>Notifications</h3>
+                        <button class="btn btn-outline" id="btn-read-all-notifs-staff">Mark All as Read</button>
+                    </div>
+                    <div class="notif-list" id="staff-notif-list" style="display:flex; flex-direction:column; gap:8px;">
+                        <p class="empty-state">No notifications. You're all caught up!</p>
+                    </div>
+                </div>
+
+                <!-- Staff Tab: My Profile -->
+                <div class="tab-content" id="tab-staff-profile">
+                    <div class="profile-container glass">
+                        <div class="profile-header">
+                            <div class="profile-avatar-wrapper">
+                                <div class="profile-avatar-preview" id="staff-profile-avatar-preview">S</div>
+                                <input type="file" id="staff-profile-upload" accept="image/*"
+                                    class="profile-upload-input">
+                                <div class="profile-upload-overlay"
+                                    onclick="document.getElementById('staff-profile-upload').click()">📷
+                                </div>
+                            </div>
+                            <div>
+                                <h3 id="staff-profile-name">Staff Name</h3>
+                                <p id="staff-profile-email" class="sub-meta">staff@email.com</p>
+                                <span class="status-badge"
+                                    style="background:var(--blue);color:white;margin-top:8px;">Staff
+                                    Member</span>
+                            </div>
+                        </div>
+                        <div class="profile-actions" style="margin-top: 30px; display: flex; gap: 10px;">
+                            <button class="btn btn-outline" id="btn-staff-switch-account">Switch Account</button>
+                            <button class="btn btn-outline" id="btn-staff-profile-logout"
+                                style="border-color:var(--red); color:var(--red);">Sign Out</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </section>
+
+        <!-- Submission Modal -->
+        <div class="modal-overlay" id="modal-submit-proof">
+            <div class="modal-card glass">
+                <div class="modal-header">
+                    <h3>📸 Submit Proof</h3>
+                    <button class="modal-close" id="btn-close-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-task-title" id="modal-task-name">Task Name</p>
+                    <p class="modal-task-reward" id="modal-task-points">🎯 0 points</p>
+                    <div class="upload-zone" id="upload-zone">
+                        <div class="upload-placeholder" id="upload-placeholder">
+                            <span class="upload-icon">📷</span>
+                            <span>Click or drag to upload image proof</span>
+                        </div>
+                        <img class="upload-preview" id="upload-preview" alt="Preview">
+                        <input type="file" id="proof-image-input" accept="image/*" hidden>
+                    </div>
+                    <div class="input-group">
+                        <label for="proof-note">Note (optional)</label>
+                        <input type="text" id="proof-note" placeholder="Any additional details…">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="btn-cancel-submit">Cancel</button>
+                    <button class="btn btn-primary" id="btn-confirm-submit" disabled>Submit Proof</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Viewer Modal -->
+        <div class="modal-overlay" id="modal-image-viewer">
+            <div class="modal-card glass image-viewer-card">
+                <div class="modal-header">
+                    <h3>📸 Submission Image</h3>
+                    <button class="modal-close" id="btn-close-image-viewer">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <img class="viewer-image" id="viewer-image" alt="Submission">
+                </div>
+            </div>
+        </div>
+
+        <!-- NEW: View Business Staff Modal -->
+        <div class="modal-overlay" id="modal-admin-staff-view">
+            <div class="modal-card glass" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h3 id="modal-admin-staff-company-name">🏢 Company Name</h3>
+                    <button class="modal-close" id="btn-close-admin-staff-modal">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+                    <div id="modal-admin-staff-list" class="staff-grid" style="display:flex; flex-direction:column; gap:12px;">
+                        <!-- JS populated -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Staff Attendance Detail Modal (from Salary Report) -->
+        <div class="modal-overlay" id="modal-staff-attendance-detail">
+            <div class="modal-card glass" style="max-width:680px; width:95%;">
+                <div class="modal-header">
+                    <h3 id="modal-staff-detail-title">📋 Staff Attendance</h3>
+                    <button class="modal-close" id="btn-close-staff-detail">&#x2715;</button>
+                </div>
+                <div class="modal-body" style="padding:0;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:16px 20px; background:rgba(255,255,255,0.03); border-bottom:1px solid rgba(255,255,255,0.06);">
+                        <div style="text-align:center;">
+                            <div style="font-size:22px; font-weight:700; color:var(--accent-light);" id="modal-detail-hours">0h 0m</div>
+                            <div style="font-size:12px; color:var(--text-muted);">Total Hours</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:22px; font-weight:700; color:var(--green);" id="modal-detail-pay">£0.00</div>
+                            <div style="font-size:12px; color:var(--text-muted);">Total Pay</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:22px; font-weight:700; color:var(--text-primary);" id="modal-detail-sessions">0</div>
+                            <div style="font-size:12px; color:var(--text-muted);">Sessions</div>
+                        </div>
+                    </div>
+                    <div id="modal-staff-detail-list" style="max-height:55vh; overflow-y:auto; padding:12px 20px;">
+                        <p class="empty-state">No records found</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="btn-close-staff-detail-footer">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="toast" class="toast"></div>
+
+        <!-- ========== QR SCANNER MODAL ========== -->
+        <div id="modal-qr-scanner" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.85); align-items:center; justify-content:center; flex-direction:column; gap:16px;">
+            <div class="card glass" style="width:min(360px,92vw); padding:24px; text-align:center;">
+                <h3 style="margin-bottom:8px;">📷 Scan QR Code</h3>
+                <p style="color:var(--text-secondary); font-size:var(--fs-sm); margin-bottom:16px;">Point your camera at the branch QR code</p>
+                <div id="qr-reader" style="width:100%; border-radius:12px; overflow:hidden;"></div>
+                <p id="qr-scan-status" style="margin-top:12px; color:var(--text-secondary); font-size:var(--fs-sm);"></p>
+                <button class="btn btn-outline" id="btn-close-qr-scanner" style="margin-top:16px; width:100%;">✕ Cancel</button>
+            </div>
+        </div>
+
+        <audio id="notification-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
+            preload="auto"></audio>
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
