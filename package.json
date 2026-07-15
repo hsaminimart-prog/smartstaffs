@@ -1,0 +1,15 @@
+{
+  "name": "smartstaffs",
+  "version": "1.0.0",
+  "description": "Attendance & reward points app for your staff",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["staff", "management", "attendance", "payroll"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@vercel/speed-insights": "^2.0.0"
+  }
+}
