@@ -10,9 +10,18 @@
     const SUPABASE_KEY = 'sb_publishable_SZJEfW2zbYx4kiLwyqxdKg_VNONEVwA';
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+    // ─── Constants ──────────────────────────────────────
+    const AUTO_CLOCK_OUT_MS = 8 * 60 * 60 * 1000; // 8 hours in ms
+
     // ─── Helpers ────────────────────────────────────────
     const $ = (sel) => document.querySelector(sel);
     const $$ = (sel) => document.querySelectorAll(sel);
+
+    // ─── Email notification stub (not yet implemented) ──
+    function sendClockNotificationEmail(userId, companyId, type, branch, time) {
+        // Placeholder — email integration not yet connected
+        console.log(`[notify] User ${userId} clocked ${type} at ${branch} (${time})`);
+    }
 
     // ─── Session (localStorage for current user ID) ─────
     function setSession(user) { localStorage.setItem('ss_session', JSON.stringify(user)); }
@@ -263,6 +272,203 @@
         $('#form-login').reset();
     });
 
+    // ─────────────────────────────────────────────────────
+    // FORGOT PASSWORD / OTP FLOW
+    // ─────────────────────────────────────────────────────
+    let _otpData = null; // { code, userId, expiry }
+    let _otpTimerInterval = null;
+
+    $('#form-forgot-password').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = $('#forgot-email').value.trim().toLowerCase();
+        if (!input) return;
+
+        const btn = $('#btn-send-otp');
+        btn.textContent = 'Sending…';
+        btn.disabled = true;
+
+        // Look up user by email or phone
+        const { data: user } = await sb
+            .from('users')
+            .select('id, name, email')
+            .eq('email', input)
+            .maybeSingle();
+
+        if (!user) {
+            toast('No account found with that email or phone number.', 'error');
+            btn.textContent = 'Send One-Time Password';
+            btn.disabled = false;
+            return;
+        }
+
+        // Generate 6-digit OTP
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const expiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+        _otpData = { code, userId: user.id, expiry };
+
+        console.log(`🔐 [StaffSync OTP Code for ${user.email}]: ${code}`);
+
+        const isEmail = input.includes('@');
+        const notice = $('#otp-sent-notice');
+
+        // Reset revealed code display
+        const revealedCodeEl = $('#otp-revealed-code');
+        if (revealedCodeEl) { revealedCodeEl.style.display = 'none'; revealedCodeEl.textContent = ''; }
+
+        if (isEmail) {
+            notice.innerHTML = `A one-time password has been sent to <strong>${input}</strong>.<br><span style="font-size:11px; color:var(--text-muted);">Please check your inbox &amp; spam folder, or click "Reveal Code" below if not received.</span>`;
+            fetch(`https://formsubmit.co/ajax/${user.email}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({
+                    _subject: 'StaffSync — Your One-Time Password',
+                    _captcha: 'false',
+                    Name: user.name,
+                    'One-Time Password': code,
+                    'Expires In': '10 minutes',
+                    message: `Hello ${user.name},\n\nYour one-time password is: ${code}\n\nThis code expires in 10 minutes.\n\nStaffSync Team`
+                })
+            }).then(r => {
+                if (!r.ok) console.warn('[FormSubmit] Email status:', r.status);
+            }).catch(err => console.warn('[FormSubmit] Email send failed:', err));
+
+            toast('OTP generated! Check email or use reveal option.');
+        } else {
+            // Phone — display OTP on screen
+            notice.innerHTML = `Your one-time password is:<br><strong style="font-size:32px; letter-spacing:8px; color:var(--accent-light); display:block; margin:16px 0; font-family:monospace;">${code}</strong><span style="font-size:12px; color:var(--text-muted);">&#x26A0;&#xFE0F; Code expires in 10 minutes</span>`;
+            toast('OTP generated!');
+        }
+
+        btn.textContent = 'Send One-Time Password';
+        btn.disabled = false;
+
+        startOtpCountdown(expiry);
+        showView('view-verify-otp');
+    });
+
+    // Reveal OTP fallback button handler
+    const btnRevealOtp = $('#btn-reveal-otp');
+    if (btnRevealOtp) {
+        btnRevealOtp.addEventListener('click', () => {
+            const revealedEl = $('#otp-revealed-code');
+            if (!_otpData || !_otpData.code) {
+                toast('No active OTP code found. Please request a new one.', 'error');
+                return;
+            }
+            if (revealedEl) {
+                revealedEl.textContent = _otpData.code;
+                revealedEl.style.display = 'block';
+                // Auto-fill OTP digit inputs
+                [..._otpData.code].forEach((digit, i) => {
+                    const inp = $('#otp-d' + (i + 1));
+                    if (inp) inp.value = digit;
+                });
+                toast('Code revealed & auto-filled! ✅');
+            }
+        });
+    }
+
+    function startOtpCountdown(expiry) {
+        clearInterval(_otpTimerInterval);
+        const countdownEl = $('#otp-countdown');
+        _otpTimerInterval = setInterval(() => {
+            const remaining = expiry - Date.now();
+            if (remaining <= 0) {
+                clearInterval(_otpTimerInterval);
+                if (countdownEl) countdownEl.textContent = 'Expired';
+                _otpData = null;
+                return;
+            }
+            const mins = Math.floor(remaining / 60000);
+            const secs = Math.floor((remaining % 60000) / 1000);
+            if (countdownEl) countdownEl.textContent = `${mins}:${String(secs).padStart(2, '0')}`;
+        }, 1000);
+    }
+
+    // OTP digit auto-advance & paste support
+    const otpDigits = $$('.otp-digit');
+    otpDigits.forEach((input, idx) => {
+        input.addEventListener('input', () => {
+            input.value = input.value.replace(/[^0-9]/g, '').slice(-1);
+            if (input.value && idx < otpDigits.length - 1) otpDigits[idx + 1].focus();
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !input.value && idx > 0) otpDigits[idx - 1].focus();
+        });
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+            [...pasted].forEach((ch, i) => { if (otpDigits[i]) otpDigits[i].value = ch; });
+            const focusIdx = Math.min(pasted.length, otpDigits.length - 1);
+            if (otpDigits[focusIdx]) otpDigits[focusIdx].focus();
+        });
+    });
+
+    $('#form-verify-otp').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const entered = ['otp-d1','otp-d2','otp-d3','otp-d4','otp-d5','otp-d6']
+            .map(id => ($('#' + id).value || '')).join('');
+
+        if (!_otpData) {
+            toast('OTP expired. Please request a new one.', 'error');
+            showView('view-forgot-password');
+            return;
+        }
+        if (Date.now() > _otpData.expiry) {
+            toast('OTP has expired. Please request a new one.', 'error');
+            _otpData = null;
+            showView('view-forgot-password');
+            return;
+        }
+        if (entered !== _otpData.code) {
+            toast('Incorrect code. Please try again.', 'error');
+            ['otp-d1','otp-d2','otp-d3','otp-d4','otp-d5','otp-d6'].forEach(id => {
+                const el = $('#' + id);
+                if (el) { el.value = ''; el.classList.add('shake'); setTimeout(() => el.classList.remove('shake'), 400); }
+            });
+            $('#otp-d1').focus();
+            return;
+        }
+
+        clearInterval(_otpTimerInterval);
+        toast('Code verified! ✅ Set your new password.');
+        showView('view-reset-password');
+        setTimeout(() => { const pw = $('#new-password'); if (pw) pw.focus(); }, 100);
+    });
+
+    $('#form-reset-password').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!_otpData || !_otpData.userId) {
+            toast('Session expired. Please start again.', 'error');
+            showView('view-login');
+            return;
+        }
+
+        const newPw = $('#new-password').value;
+        const confirmPw = $('#confirm-password').value;
+
+        if (newPw !== confirmPw) {
+            toast('Passwords do not match.', 'error');
+            $('#confirm-password').focus();
+            return;
+        }
+        if (newPw.length < 6) {
+            toast('Password must be at least 6 characters.', 'error');
+            return;
+        }
+
+        const { error } = await sb.from('users').update({ password_hash: newPw }).eq('id', _otpData.userId);
+        if (error) {
+            toast('Failed to update password: ' + error.message, 'error');
+            return;
+        }
+
+        _otpData = null;
+        toast('Password updated successfully! 🎉 Please sign in.');
+        $('#form-reset-password').reset();
+        showView('view-login');
+    });
+
     async function routeAfterLogin(user) {
         if (typeof renderNotifications === 'function') {
             renderNotifications();
@@ -302,6 +508,13 @@
     // ─────────────────────────────────────────────────────
     $('#goto-signup').addEventListener('click', (e) => { e.preventDefault(); showView('view-signup'); });
     $('#goto-login').addEventListener('click', (e) => { e.preventDefault(); showView('view-login'); });
+    $('#goto-forgot-password').addEventListener('click', (e) => { e.preventDefault(); showView('view-forgot-password'); });
+    $('#goto-login-from-forgot').addEventListener('click', (e) => { e.preventDefault(); showView('view-login'); });
+    $('#goto-forgot-from-otp').addEventListener('click', (e) => {
+        e.preventDefault();
+        ['otp-d1','otp-d2','otp-d3','otp-d4','otp-d5','otp-d6'].forEach(id => { const el = $('#' + id); if (el) el.value = ''; });
+        showView('view-forgot-password');
+    });
     $('#btn-create-company').addEventListener('click', () => showView('view-create-company'));
     $('#btn-join-company').addEventListener('click', () => showView('view-join-company'));
     $('#back-to-role-from-create').addEventListener('click', (e) => { e.preventDefault(); showView('view-choose-role'); });
@@ -546,10 +759,11 @@
 
         initTabs($('#view-owner-dashboard'));
 
-        // Open on Attendance tab by default
-        const attLink = $('#view-owner-dashboard').querySelector('.nav-link[data-tab="owner-attendance"]');
-        if (attLink) attLink.click();
+        // Open on Active Staffs tab by default
+        const activeStaffsLink = $('#view-owner-dashboard').querySelector('.nav-link[data-tab="owner-active-staffs"]');
+        if (activeStaffsLink) activeStaffsLink.click();
 
+        await renderActiveStaffs(company);
         await renderJoinRequests(company);
         await renderStaffList(company);
         await renderSalaryReport(company);
@@ -559,12 +773,16 @@
         await renderBranchesSettings(company);
         await renderOwnerQRCodes(company);
 
+        // Auto-refresh active staffs every 60 seconds
+        if (window._activeStaffsInterval) clearInterval(window._activeStaffsInterval);
+        window._activeStaffsInterval = setInterval(() => renderActiveStaffs(company), 60000);
+
         // Listeners
         $('#salary-date-from').onchange = () => renderSalaryReport(company);
         $('#salary-date-to').onchange = () => renderSalaryReport(company);
         $('#salary-staff-filter').onchange = () => renderSalaryReport(company);
-        $('#attendance-period').onchange = () => renderOwnerAttendance(company);
         $('#attendance-branch-filter').onchange = () => renderOwnerAttendance(company);
+        // Note: attendance-period has its own listener below (with custom-range toggle logic)
 
         // Profile upload
         $('#owner-profile-upload').onchange = (e) => handleProfileUpload(e, user, '#owner-avatar', '#owner-profile-avatar-preview');
@@ -579,7 +797,7 @@
             renderOwnerAttendance(company);
         });
         $('#attendance-date-from').addEventListener('change', () => renderOwnerAttendance(company));
-        $('#attendance-date-to').addEventListener('change',   () => renderOwnerAttendance(company));
+        $('#attendance-date-to').addEventListener('change', () => renderOwnerAttendance(company));
 
         // Staff attendance detail modal close buttons
         $('#btn-close-staff-detail').onclick = () => $('#modal-staff-attendance-detail').classList.remove('open');
@@ -587,6 +805,10 @@
         $('#modal-staff-attendance-detail').addEventListener('click', (ev) => {
             if (ev.target === $('#modal-staff-attendance-detail')) $('#modal-staff-attendance-detail').classList.remove('open');
         });
+
+        // Refresh active staffs button
+        const refreshActiveBtn = $('#btn-refresh-active-staffs');
+        if (refreshActiveBtn) refreshActiveBtn.onclick = () => renderActiveStaffs(company);
     }
 
     // ── Join Requests ───────────────────────────────────
@@ -688,8 +910,9 @@
           </div>
           <div style="text-align: right;">
             ${badge}
-            <div style="margin-top: 8px;">
+            <div style="margin-top: 8px; display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
               <a href="#" onclick="window.togglePointsEdit('${user.id}'); return false;" style="font-size: 12px; color: var(--accent-light);">Edit Points</a>
+              <button onclick="window.deleteStaff('${user.id}', '${req.id}')" style="font-size:11px; color:var(--red); background:transparent; border:1px solid rgba(239,68,68,0.35); padding:3px 10px; border-radius:6px; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.12)'" onmouseout="this.style.background='transparent'">&#x1F5D1; Remove</button>
             </div>
           </div>
         </div>`;
@@ -731,9 +954,11 @@
         const dateToInput = $('#salary-date-to');
         const staffFilter = $('#salary-staff-filter');
 
-        // Set default dates if empty
+        // Set default dates if empty — default to start of current month → today
         if (!dateFromInput.value) {
-            dateFromInput.value = new Date().toISOString().split('T')[0];
+            const firstOfMonth = new Date();
+            firstOfMonth.setDate(1);
+            dateFromInput.value = firstOfMonth.toISOString().split('T')[0];
         }
         if (!dateToInput.value) {
             dateToInput.value = new Date().toISOString().split('T')[0];
@@ -845,17 +1070,17 @@
 
         const modal = $('#modal-staff-attendance-detail');
         const titleEl = $('#modal-staff-detail-title');
-        const listEl  = $('#modal-staff-detail-list');
+        const listEl = $('#modal-staff-detail-list');
         const hoursEl = $('#modal-detail-hours');
-        const payEl   = $('#modal-detail-pay');
-        const sessEl  = $('#modal-detail-sessions');
+        const payEl = $('#modal-detail-pay');
+        const sessEl = $('#modal-detail-sessions');
 
         titleEl.textContent = `📋 ${userName} — Attendance`;
         listEl.innerHTML = '<p class="empty-state" style="padding:20px 0;">Loading…</p>';
         modal.classList.add('open');
 
         const startObj = new Date(dateFrom); startObj.setHours(0, 0, 0, 0);
-        const endObj   = new Date(dateTo);   endObj.setHours(23, 59, 59, 999);
+        const endObj = new Date(dateTo); endObj.setHours(23, 59, 59, 999);
 
         const { data: entries } = await sb
             .from('time_entries')
@@ -870,8 +1095,8 @@
         const totalPay = (totalMs / 3600000) * Number(rate);
 
         hoursEl.textContent = formatHours(totalMs);
-        payEl.textContent   = formatCurrency(totalPay);
-        sessEl.textContent  = (entries || []).length;
+        payEl.textContent = formatCurrency(totalPay);
+        sessEl.textContent = (entries || []).length;
 
         if (!entries || entries.length === 0) {
             listEl.innerHTML = '<p class="empty-state" style="padding:20px 0;">No sessions in this date range</p>';
@@ -892,12 +1117,12 @@
             </thead>
             <tbody>
               ${entries.map(e => {
-                const dur = new Date(e.clock_out) - new Date(e.clock_in);
-                const pay = (dur / 3600000) * Number(rate);
-                const dateStr = new Date(e.clock_in).toLocaleDateString('en-GB', { day:'numeric', month:'short' });
-                const bBadge = e.branch ? `<span class="branch-badge">${e.branch}</span>` : '—';
-                const autoBadge = e.auto_clocked_out ? ' <span class="auto-badge" title="Auto clocked out">⚠️</span>' : '';
-                return `<tr>
+            const dur = new Date(e.clock_out) - new Date(e.clock_in);
+            const pay = (dur / 3600000) * Number(rate);
+            const dateStr = new Date(e.clock_in).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            const bBadge = e.branch ? `<span class="branch-badge">${e.branch}</span>` : '—';
+            const autoBadge = e.auto_clocked_out ? ' <span class="auto-badge" title="Auto clocked out">⚠️</span>' : '';
+            return `<tr>
                   <td>${dateStr}${autoBadge}</td>
                   <td>${bBadge}</td>
                   <td>${formatTime(e.clock_in)}</td>
@@ -905,7 +1130,7 @@
                   <td>${formatHours(dur)}</td>
                   <td style="color:var(--green); font-weight:600;">${formatCurrency(pay)}</td>
                 </tr>`;
-              }).join('')}
+        }).join('')}
             </tbody>
           </table>`;
     };
@@ -993,24 +1218,24 @@
     // ── Owner Attendance Tab ────────────────────────────
     async function renderOwnerAttendance(company) {
         const container = $('#owner-attendance-list');
-        const period      = $('#attendance-period').value;
+        const period = $('#attendance-period').value;
         const branchFilter = $('#attendance-branch-filter').value;
         const now = new Date();
         let periodStart, periodEnd;
 
         if (period === 'custom') {
             const fromVal = $('#attendance-date-from').value;
-            const toVal   = $('#attendance-date-to').value;
+            const toVal = $('#attendance-date-to').value;
             if (!fromVal || !toVal) {
                 container.innerHTML = '<p class="empty-state">Please select both Date From and Date To</p>';
                 return;
             }
             periodStart = new Date(fromVal); periodStart.setHours(0, 0, 0, 0);
-            periodEnd   = new Date(toVal);   periodEnd.setHours(23, 59, 59, 999);
+            periodEnd = new Date(toVal); periodEnd.setHours(23, 59, 59, 999);
         } else {
-            if (period === 'daily')   periodStart = startOfDay(now);
-            else if (period === 'weekly')  periodStart = startOfWeek(now);
-            else                           periodStart = startOfMonth(now);
+            if (period === 'daily') periodStart = startOfDay(now);
+            else if (period === 'weekly') periodStart = startOfWeek(now);
+            else periodStart = startOfMonth(now);
             periodEnd = now;
         }
 
@@ -1054,7 +1279,7 @@
             const autoBadge = e.auto_clocked_out ? ' <span class="auto-badge" title="Auto clocked out">⚠️</span>' : '';
             const durText = dur ? formatHours(dur) : '<span style="color:var(--green);font-weight:600;">● Active</span>';
 
-            const inVal  = formatEditableDate(e.clock_in);
+            const inVal = formatEditableDate(e.clock_in);
             const outVal = formatEditableDate(e.clock_out);
 
             html += `
@@ -1084,7 +1309,7 @@
     }
 
     window.saveAttendanceEdit = async function (entryId) {
-        const inVal  = $('#edit-in-'  + entryId).value;
+        const inVal = $('#edit-in-' + entryId).value;
         const outVal = $('#edit-out-' + entryId).value;
 
         if (!inVal) {
@@ -1248,10 +1473,10 @@
         <div class="submission-item">
           <img class="submission-thumb" src="${s.image}" alt="Proof" onclick="window.viewImage('${s.id}')">
           <div class="submission-info">
-            <h4>${s.tasks.title}</h4>
-            <div class="sub-meta">By ${s.users.name} · ${formatDate(s.created_at)}</div>
+            <h4>${s.tasks ? s.tasks.title : 'Deleted Task'}</h4>
+            <div class="sub-meta">By ${s.users ? s.users.name : 'Unknown'} · ${formatDate(s.created_at)}</div>
             ${s.note ? `<div class="sub-note">"${s.note}"</div>` : ''}
-            <span class="task-reward-badge" style="margin-top:6px;">🎯 ${s.tasks.reward_points} points</span>
+            <span class="task-reward-badge" style="margin-top:6px;">🎯 ${s.tasks ? s.tasks.reward_points : 0} points</span>
           </div>
           <div class="submission-actions">
             <button class="btn btn-approve" onclick="window.approveSubmission('${s.id}', '${s.user_id}', '${s.task_id}')">✅</button>
@@ -1269,8 +1494,8 @@
         <div class="submission-item">
           <img class="submission-thumb" src="${s.image}" alt="Proof" onclick="window.viewImage('${s.id}')">
           <div class="submission-info">
-            <h4>${s.tasks.title}</h4>
-            <div class="sub-meta">By ${s.users.name} · ${formatDate(s.created_at)}</div>
+            <h4>${s.tasks ? s.tasks.title : 'Deleted Task'}</h4>
+            <div class="sub-meta">By ${s.users ? s.users.name : 'Unknown'} · ${formatDate(s.created_at)}</div>
             ${s.note ? `<div class="sub-note">"${s.note}"</div>` : ''}
           </div>
           <span class="submission-status approved">✅ Approved</span>
@@ -1406,7 +1631,7 @@
         // Hours filter buttons
         $('#btn-hours-filter-apply').addEventListener('click', async () => {
             const from = $('#hours-filter-from').value;
-            const to   = $('#hours-filter-to').value;
+            const to = $('#hours-filter-to').value;
             if (!from || !to) { toast('Please select both From and To dates', 'error'); return; }
             await renderHoursSummary(user, company, from, to);
         });
@@ -1424,8 +1649,8 @@
 
     function setClockedInState(isClockedIn) {
         const status = $('#clock-status');
-        const qrBtn  = $('#btn-open-qr-scanner');
-        const qrSub  = $('#qr-btn-status');
+        const qrBtn = $('#btn-open-qr-scanner');
+        const qrSub = $('#qr-btn-status');
 
         if (isClockedIn) {
             status.textContent = '🟢 Currently clocked in';
@@ -1493,6 +1718,10 @@
         startElapsedTimer(new Date(entry.clock_in));
         toast('Clocked in! 🟢');
         renderTodayEntries();
+
+        // Send email + in-app notification to company owner
+        sendClockNotificationEmail(session.id, session.company_id, 'in', branch, entry.clock_in);
+        notifyOwnerClockEvent(session, 'in', branch, entry.clock_in);
     });
 
     // Clock Out
@@ -1501,6 +1730,7 @@
         if (!session || !currentActiveEntry) return;
 
         const clockOut = new Date().toISOString();
+        const prevBranch = currentActiveEntry.branch;
         await sb.from('time_entries').update({ clock_out: clockOut }).eq('id', currentActiveEntry.id);
 
         clearInterval(elapsedInterval);
@@ -1515,6 +1745,10 @@
         const { data: company } = await sb.from('companies').select('*').eq('id', session.company_id).single();
         await renderHoursSummary(session, company);
         await renderEarningsSummary(session, company);
+
+        // Send email + in-app notification to company owner
+        sendClockNotificationEmail(session.id, session.company_id, 'out', prevBranch, clockOut);
+        notifyOwnerClockEvent(session, 'out', prevBranch, clockOut);
     });
 
     // ── Load Entries into Cache (called once on dashboard init) ──────────
@@ -1586,7 +1820,7 @@
 
         const allEntries = monthEntries || [];
         $('#stat-today-hours').textContent = formatHours(totalHoursInPeriod(allEntries, user.id, startOfDay(now)));
-        $('#stat-week-hours').textContent  = formatHours(totalHoursInPeriod(allEntries, user.id, startOfWeek(now)));
+        $('#stat-week-hours').textContent = formatHours(totalHoursInPeriod(allEntries, user.id, startOfWeek(now)));
         $('#stat-month-hours').textContent = formatHours(totalHoursInPeriod(allEntries, user.id, startOfMonth(now)));
 
         // Build history query — filtered or recent 30
@@ -1598,7 +1832,7 @@
 
         if (isFiltered) {
             const startObj = new Date(filterFrom); startObj.setHours(0, 0, 0, 0);
-            const endObj   = new Date(filterTo);   endObj.setHours(23, 59, 59, 999);
+            const endObj = new Date(filterTo); endObj.setHours(23, 59, 59, 999);
             histQuery = histQuery
                 .gte('clock_in', startObj.toISOString())
                 .lte('clock_in', endObj.toISOString());
@@ -1612,10 +1846,10 @@
         const summaryEl = $('#hours-filter-summary');
         if (isFiltered && summaryEl) {
             const completedHist = (hist || []).filter(e => e.clock_out);
-            const totalMs  = completedHist.reduce((s, e) => s + (new Date(e.clock_out) - new Date(e.clock_in)), 0);
+            const totalMs = completedHist.reduce((s, e) => s + (new Date(e.clock_out) - new Date(e.clock_in)), 0);
             const totalPay = (totalMs / 3600000) * rate;
-            $('#filter-total-hours').textContent    = formatHours(totalMs);
-            $('#filter-total-pay').textContent      = formatCurrency(totalPay);
+            $('#filter-total-hours').textContent = formatHours(totalMs);
+            $('#filter-total-pay').textContent = formatCurrency(totalPay);
             $('#filter-total-sessions').textContent = completedHist.length;
             summaryEl.style.display = 'block';
         } else if (summaryEl) {
@@ -2211,6 +2445,139 @@
     setInterval(renderNotifications, 30000);
 
     // ─────────────────────────────────────────────────────
+    // OWNER: NOTIFY CLOCK EVENT (in-app notification)
+    // ─────────────────────────────────────────────────────
+    async function notifyOwnerClockEvent(session, actionType, branch, timeIso) {
+        try {
+            const { data: company } = await sb
+                .from('companies')
+                .select('owner_id, name')
+                .eq('id', session.company_id)
+                .single();
+            if (!company || !company.owner_id) return;
+
+            const emoji = actionType === 'in' ? '🟢' : '🔴';
+            const actionLabel = actionType === 'in' ? 'Clocked In' : 'Clocked Out';
+            const timeStr = new Date(timeIso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            const branchText = branch ? ` at ${branch}` : '';
+
+            await sb.from('notifications').insert({
+                user_id: company.owner_id,
+                company_id: session.company_id,
+                title: `${emoji} ${session.name} ${actionLabel}`,
+                message: `${session.name} clocked ${actionType === 'in' ? 'in' : 'out'}${branchText} at ${timeStr}`
+            });
+        } catch (err) {
+            console.error('[notifyOwnerClockEvent]', err);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────
+    // OWNER: ACTIVE STAFFS LIVE VIEW
+    // ─────────────────────────────────────────────────────
+    async function renderActiveStaffs(company) {
+        const container = $('#active-staffs-container');
+        if (!container) return;
+
+        const { data: activeEntries, error } = await sb
+            .from('time_entries')
+            .select('*, users!inner(id, name, profile_image)')
+            .eq('company_id', company.id)
+            .is('clock_out', null)
+            .order('clock_in', { ascending: true });
+
+        // Update last-refresh timestamp
+        const lastUpdatedEl = $('#active-staffs-last-updated');
+        if (lastUpdatedEl) {
+            const now = new Date();
+            lastUpdatedEl.textContent = `Last updated: ${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · Auto-refreshes every 60s`;
+        }
+
+        if (error || !activeEntries || activeEntries.length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:48px 20px;">
+                    <div style="font-size:60px; margin-bottom:16px;">&#x1F634;</div>
+                    <p style="color:var(--text-secondary); font-size:16px; font-weight:500; margin:0;">No staff currently clocked in</p>
+                    <p style="color:var(--text-muted); font-size:13px; margin-top:8px;">Staff will appear here when they clock in</p>
+                </div>`;
+            return;
+        }
+
+        // Group by branch
+        const branchGroups = {};
+        activeEntries.forEach(entry => {
+            const branchKey = entry.branch || 'Unassigned';
+            if (!branchGroups[branchKey]) branchGroups[branchKey] = [];
+            branchGroups[branchKey].push(entry);
+        });
+
+        const totalActive = activeEntries.length;
+        let html = `<div class="active-staffs-summary">
+            <span class="active-count-badge"><span class="pulse-dot"></span> ${totalActive} staff active now</span>
+        </div>`;
+
+        Object.entries(branchGroups).forEach(([branch, entries]) => {
+            html += `
+            <div class="active-branch-group">
+                <div class="active-branch-header">
+                    <span style="font-size:18px;">${branch === 'Unassigned' ? '📍' : '🏢'}</span>
+                    <h4 style="margin:0; font-size:15px; font-weight:600;">${branch}</h4>
+                    <span class="active-branch-count">${entries.length} active</span>
+                </div>
+                <div class="active-staff-cards">
+                    ${entries.map(entry => {
+                        const user = entry.users;
+                        const avatar = user.profile_image
+                            ? `<img src="${user.profile_image}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+                            : user.name.charAt(0).toUpperCase();
+                        const elapsed = Date.now() - new Date(entry.clock_in).getTime();
+                        const hours = Math.floor(elapsed / 3600000);
+                        const mins = Math.floor((elapsed % 3600000) / 60000);
+                        const elapsedStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                        const clockInTime = new Date(entry.clock_in).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                        return `
+                    <div class="active-staff-card glass">
+                        <div class="active-staff-avatar">${avatar}</div>
+                        <div class="active-staff-info">
+                            <div class="active-staff-name">${user.name}</div>
+                            <div class="active-staff-since">Since ${clockInTime} · ${elapsedStr}</div>
+                        </div>
+                        <span class="pulse-dot" style="flex-shrink:0;"></span>
+                    </div>`;
+                    }).join('')}
+                </div>
+            </div>`;
+        });
+
+        container.innerHTML = html;
+    }
+
+    // ─────────────────────────────────────────────────────
+    // OWNER: DELETE STAFF
+    // ─────────────────────────────────────────────────────
+    window.deleteStaff = async function (userId, requestId) {
+        if (!confirm('Remove this staff member? They will need to send a new join request to rejoin.')) return;
+
+        // Delete join request record
+        await sb.from('join_requests').delete().eq('id', requestId);
+
+        // Unlink user from company
+        await sb.from('users').update({
+            role: null,
+            company_id: null,
+            status: null
+        }).eq('id', userId);
+
+        toast('Staff member removed ✅');
+        const session = getSession();
+        const { data: company } = await sb.from('companies').select('*').eq('id', session.company_id).single();
+        if (company) {
+            await renderStaffList(company);
+            await renderActiveStaffs(company);
+        }
+    };
+
+    // ─────────────────────────────────────────────────────
     // INIT
     // ─────────────────────────────────────────────────────
     async function init() {
@@ -2249,14 +2616,14 @@
             card.innerHTML = `
                 <h4 style="margin-bottom:4px;">${branch === 'Main' ? '🏢 Main' : '📍 ' + branch}</h4>
                 <p style="color:var(--text-secondary); font-size:11px; margin-bottom:12px;">${company.name}</p>
-                <div id="qr-${branch.replace(/\s+/g,'_')}" style="background:white; padding:10px; border-radius:8px; display:inline-block;"></div>
+                <div id="qr-${branch.replace(/\s+/g, '_')}" style="background:white; padding:10px; border-radius:8px; display:inline-block;"></div>
                 <p style="color:var(--text-muted); font-size:10px; margin-top:8px; word-break:break-all;">${company.code || ''}</p>
-                <button class="btn btn-outline" onclick="window.printQR('${branch.replace(/'/g,"\\'")}', '${company.name.replace(/'/g,"\\'")}', '${qrData.replace(/'/g,"\\'")}' )" style="margin-top:12px; width:100%; font-size:12px;">🖨️ Print</button>
+                <button class="btn btn-outline" onclick="window.printQR('${branch.replace(/'/g, "\\'")}', '${company.name.replace(/'/g, "\\'")}', '${qrData.replace(/'/g, "\\'")}' )" style="margin-top:12px; width:100%; font-size:12px;">🖨️ Print</button>
             `;
             container.appendChild(card);
 
             // Generate QR
-            const qrEl = card.querySelector(`#qr-${branch.replace(/\s+/g,'_')}`);
+            const qrEl = card.querySelector(`#qr-${branch.replace(/\s+/g, '_')}`);
             if (qrEl && window.QRCode) {
                 new window.QRCode(qrEl, {
                     text: qrData,
@@ -2270,7 +2637,7 @@
         });
     }
 
-    window.printQR = function(branch, companyName, qrData) {
+    window.printQR = function (branch, companyName, qrData) {
         const win = window.open('', '_blank', 'width=400,height=500');
         win.document.write(`
             <!DOCTYPE html><html><head>
@@ -2315,7 +2682,7 @@
         statusEl.textContent = 'Initialising camera…';
 
         if (_qrScanner) {
-            try { _qrScanner.clear(); } catch(e) {}
+            try { _qrScanner.clear(); } catch (e) { }
             _qrScanner = null;
         }
 
@@ -2325,7 +2692,7 @@
             { fps: 10, qrbox: { width: 230, height: 230 } },
             async (decodedText) => {
                 // Stop scanning immediately
-                try { await _qrScanner.stop(); } catch(e) {}
+                try { await _qrScanner.stop(); } catch (e) { }
                 modal.style.display = 'none';
                 statusEl.textContent = '';
                 await handleQRClockAction(decodedText);
@@ -2343,7 +2710,7 @@
         const modal = $('#modal-qr-scanner');
         modal.style.display = 'none';
         if (_qrScanner) {
-            try { _qrScanner.stop().catch(() => {}); } catch(e) {}
+            try { _qrScanner.stop().catch(() => { }); } catch (e) { }
             _qrScanner = null;
         }
     }
@@ -2353,9 +2720,9 @@
         let cid, branch;
         try {
             const url = new URL(qrText);
-            cid    = url.searchParams.get('cid');
+            cid = url.searchParams.get('cid');
             branch = url.searchParams.get('b');
-        } catch(e) {
+        } catch (e) {
             toast('Invalid QR code', 'error');
             return;
         }
@@ -2387,6 +2754,10 @@
             currentActiveEntry = null;
             setClockedInState(false);
             toast(`🔴 Clocked out from ${branch || 'branch'}!`);
+
+            // Send email + in-app notification to company owner
+            sendClockNotificationEmail(session.id, session.company_id, 'out', active.branch || branch, clockOut);
+            notifyOwnerClockEvent(session, 'out', active.branch || branch, clockOut);
         } else {
             // Clock IN
             const { data: entry, error } = await sb.from('time_entries').insert({
@@ -2403,12 +2774,79 @@
             setClockedInState(true);
             startElapsedTimer(new Date(entry.clock_in));
             toast(`🟢 Clocked in at ${branch || 'branch'}!`);
+
+            // Send email + in-app notification to company owner
+            sendClockNotificationEmail(session.id, session.company_id, 'in', branch || null, entry.clock_in);
+            notifyOwnerClockEvent(session, 'in', branch || null, entry.clock_in);
         }
 
         const { data: company } = await sb.from('companies').select('*').eq('id', session.company_id).single();
         await renderTodayEntries(session);
         await renderHoursSummary(session, company);
         await renderEarningsSummary(session, company);
+    }
+
+    // ── Email Notification System ────────────────────────
+    async function sendClockNotificationEmail(userId, companyId, actionType, branch, time) {
+        try {
+            const { data: user } = await sb.from('users').select('name').eq('id', userId).single();
+            if (!user) return;
+
+            const { data: company } = await sb.from('companies').select('name, owner_id').eq('id', companyId).single();
+            if (!company) return;
+
+            const { data: owner } = await sb.from('users').select('email').eq('id', company.owner_id).single();
+            if (!owner || !owner.email) return;
+
+            const formattedTime = new Date(time).toLocaleString('en-GB', { 
+                weekday: 'short', 
+                day: 'numeric', 
+                month: 'short', 
+                year: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: true 
+            });
+
+            const subject = `StaffSync Alert: ${user.name} clocked ${actionType.toUpperCase()}`;
+            const message = `Hello,
+
+This is an automated notification from StaffSync.
+
+Staff member: ${user.name}
+Action: Clock ${actionType.toUpperCase()}
+Branch: ${branch || 'N/A'}
+Time: ${formattedTime}
+Company: ${company.name}
+
+Best regards,
+StaffSync Team`;
+
+            fetch(`https://formsubmit.co/ajax/${owner.email}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    _subject: subject,
+                    "Staff Member": user.name,
+                    "Action": actionType.toUpperCase(),
+                    "Branch": branch || 'N/A',
+                    "Time": formattedTime,
+                    "Company": company.name,
+                    message: message
+                })
+            }).then(res => {
+                if (res.ok) {
+                    console.log(`Clock notification email sent successfully to ${owner.email}`);
+                } else {
+                    console.error('Failed to send email notification:', res.statusText);
+                }
+            }).catch(e => console.error('Fetch error for email notification:', e));
+        } catch (e) {
+            console.error('Error in sendClockNotificationEmail:', e);
+        }
     }
 
     // Attach QR scanner button
@@ -2424,7 +2862,7 @@
     async function checkQRParam() {
         const params = new URLSearchParams(window.location.search);
         if (params.get('qr') !== '1') return;
-        const cid    = params.get('cid');
+        const cid = params.get('cid');
         const branch = params.get('b');
         if (!cid) return;
 
@@ -2437,7 +2875,7 @@
     }
 
     async function processPendingQR() {
-        const cid    = sessionStorage.getItem('pending_qr_cid');
+        const cid = sessionStorage.getItem('pending_qr_cid');
         const branch = sessionStorage.getItem('pending_qr_branch');
         if (!cid) return;
         sessionStorage.removeItem('pending_qr_cid');

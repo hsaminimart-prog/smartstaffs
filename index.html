@@ -55,7 +55,85 @@
                         </div>
                         <button type="submit" class="btn btn-primary btn-full">Sign In</button>
                     </form>
+                    <p class="auth-switch forgot-pw-link"><a href="#" id="goto-forgot-password">Forgot Password?</a></p>
                     <p class="auth-switch">Don't have an account? <a href="#" id="goto-signup">Sign Up</a></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== FORGOT PASSWORD ========== -->
+        <section id="view-forgot-password" class="auth-view">
+            <div class="auth-container">
+                <div class="auth-card glass">
+                    <div class="brand">
+                        <img src="logo.png" alt="SmartStaffs Logo" class="brand-logo-img">
+                        <p class="tagline">Reset your password</p>
+                    </div>
+                    <form id="form-forgot-password" autocomplete="off">
+                        <div class="input-group">
+                            <label for="forgot-email">Email or Mobile Number</label>
+                            <input type="text" id="forgot-email" placeholder="you@company.com or 07xxxxxxxxx" required>
+                        </div>
+                        <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px; line-height:1.5;">We'll send a one-time password to your email. For phone numbers, the OTP will be displayed on screen.</p>
+                        <button type="submit" class="btn btn-primary btn-full" id="btn-send-otp">Send One-Time Password</button>
+                    </form>
+                    <p class="auth-switch"><a href="#" id="goto-login-from-forgot">← Back to Sign In</a></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== VERIFY OTP ========== -->
+        <section id="view-verify-otp" class="auth-view">
+            <div class="auth-container">
+                <div class="auth-card glass">
+                    <div class="brand">
+                        <div class="otp-icon-wrapper">
+                            <span style="font-size:48px;">🔐</span>
+                        </div>
+                        <p class="tagline">Enter the 6-digit code</p>
+                    </div>
+                    <p id="otp-sent-notice" style="text-align:center; color:var(--text-secondary); font-size:13px; margin-bottom:20px; line-height:1.6;">A one-time password has been sent.</p>
+                    <form id="form-verify-otp" autocomplete="off">
+                        <div class="otp-input-row">
+                            <input type="text" maxlength="1" class="otp-digit" id="otp-d1" inputmode="numeric" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="otp-digit" id="otp-d2" inputmode="numeric" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="otp-digit" id="otp-d3" inputmode="numeric" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="otp-digit" id="otp-d4" inputmode="numeric" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="otp-digit" id="otp-d5" inputmode="numeric" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="otp-digit" id="otp-d6" inputmode="numeric" pattern="[0-9]">
+                        </div>
+                        <div id="otp-timer" style="text-align:center; color:var(--text-muted); font-size:12px; margin-bottom:16px;">Code expires in <span id="otp-countdown">10:00</span></div>
+                        <button type="submit" class="btn btn-primary btn-full">Verify Code</button>
+                    </form>
+                    <div id="otp-reveal-container" style="text-align:center; margin-top:16px; padding:12px; background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.12); border-radius:10px;">
+                        <p style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">Didn't get the email? (Check spam or use test code below)</p>
+                        <button id="btn-reveal-otp" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 12px;">👁️ Reveal Code on Screen</button>
+                        <div id="otp-revealed-code" style="display:none; font-size:24px; font-weight:700; font-family:monospace; color:var(--accent-light); letter-spacing:6px; margin-top:8px;"></div>
+                    </div>
+                    <p class="auth-switch"><a href="#" id="goto-forgot-from-otp">← Resend Code</a></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== RESET PASSWORD ========== -->
+        <section id="view-reset-password" class="auth-view">
+            <div class="auth-container">
+                <div class="auth-card glass">
+                    <div class="brand">
+                        <span style="font-size:48px;">🔑</span>
+                        <p class="tagline">Set a new password</p>
+                    </div>
+                    <form id="form-reset-password" autocomplete="off">
+                        <div class="input-group">
+                            <label for="new-password">New Password</label>
+                            <input type="password" id="new-password" placeholder="Min 6 characters" minlength="6" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="confirm-password">Confirm Password</label>
+                            <input type="password" id="confirm-password" placeholder="Repeat your new password" minlength="6" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">Set New Password</button>
+                    </form>
                 </div>
             </div>
         </section>
@@ -337,7 +415,10 @@
                             <button class="hamburger-btn" id="btn-owner-hamburger">☰</button>
                             <div class="dropdown-menu glass" id="dropdown-owner">
                                 <ul class="nav-links-dropdown">
-                                    <li><a href="#" class="nav-link active" data-tab="owner-requests"><span
+                                    <li><a href="#" class="nav-link active" data-tab="owner-active-staffs"><span
+                                                class="nav-icon">🟢</span>
+                                            Active Staffs</a></li>
+                                    <li><a href="#" class="nav-link" data-tab="owner-requests"><span
                                                 class="nav-icon">📋</span>
                                             Join Requests</a></li>
                                     <li><a href="#" class="nav-link" data-tab="owner-staff"><span
@@ -372,8 +453,20 @@
                     </div>
                 </header>
 
+                <!-- Owner Tab: Active Staffs -->
+                <div class="tab-content active" id="tab-owner-active-staffs">
+                    <div class="actions-bar" style="margin-bottom:16px;">
+                        <h3>🟢 Active Staffs</h3>
+                        <button class="btn btn-outline" id="btn-refresh-active-staffs">↻ Refresh</button>
+                    </div>
+                    <div id="active-staffs-last-updated" style="font-size:11px; color:var(--text-muted); margin-bottom:16px;"></div>
+                    <div id="active-staffs-container">
+                        <p class="empty-state">No staff currently clocked in</p>
+                    </div>
+                </div>
+
                 <!-- Owner Tab: Join Requests -->
-                <div class="tab-content active" id="tab-owner-requests">
+                <div class="tab-content" id="tab-owner-requests">
                     <div class="card glass" id="requests-container">
                         <p class="empty-state">No pending requests</p>
                     </div>
@@ -474,7 +567,7 @@
                                 <option value="all">All Branches</option>
                             </select>
                         </div>
-                        <div id="attendance-custom-range" style="display:none; width:100%; display:none; gap:12px; flex-wrap:wrap;">
+                        <div id="attendance-custom-range" style="width:100%; display:none; gap:12px; flex-wrap:wrap;">
                             <div class="input-group inline" style="flex:1; min-width:140px;">
                                 <label>Date From</label>
                                 <input type="date" id="attendance-date-from" style="width:100%; padding:8px; border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:white;">

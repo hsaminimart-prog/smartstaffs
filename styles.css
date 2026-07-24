@@ -2258,3 +2258,210 @@ section.active {
 .qr-scan-btn.clocked-in .qr-scan-icon {
     filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.8));
 }
+
+/* ============================================================
+   FORGOT PASSWORD LINK
+   ============================================================ */
+.forgot-pw-link {
+    margin-top: -4px;
+    margin-bottom: 4px;
+}
+
+.forgot-pw-link a {
+    font-size: 13px;
+    color: var(--accent-light);
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.forgot-pw-link a:hover {
+    opacity: 1;
+}
+
+/* ============================================================
+   OTP INPUT ROW
+   ============================================================ */
+.otp-input-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.otp-digit {
+    width: 48px;
+    height: 58px;
+    text-align: center;
+    font-size: 24px;
+    font-weight: 700;
+    font-family: var(--font);
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.06);
+    border: 2px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    outline: none;
+    transition: all 0.2s var(--ease);
+    caret-color: var(--accent-light);
+}
+
+.otp-digit:focus {
+    border-color: var(--accent-light);
+    background: rgba(76, 201, 240, 0.08);
+    box-shadow: 0 0 0 3px rgba(76, 201, 240, 0.15);
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
+
+.otp-digit.shake {
+    animation: shake 0.4s ease;
+    border-color: var(--red);
+}
+
+/* ============================================================
+   ACTIVE STAFFS PAGE
+   ============================================================ */
+.active-staffs-summary {
+    margin-bottom: 20px;
+}
+
+.active-count-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(6, 214, 160, 0.1);
+    border: 1px solid rgba(6, 214, 160, 0.25);
+    color: var(--green);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 8px 16px;
+    border-radius: 50px;
+}
+
+/* Pulsing live indicator dot */
+.pulse-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    background: var(--green);
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.pulse-dot::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: var(--green);
+    opacity: 0.4;
+    animation: pulse-ring 1.5s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+    0% { transform: scale(0.8); opacity: 0.5; }
+    70% { transform: scale(1.8); opacity: 0; }
+    100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* Branch group */
+.active-branch-group {
+    margin-bottom: 24px;
+}
+
+.active-branch-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    margin-bottom: 12px;
+}
+
+.active-branch-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 3px 10px;
+    border-radius: 20px;
+}
+
+.active-staff-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.active-staff-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(6, 214, 160, 0.15);
+    background: rgba(6, 214, 160, 0.04);
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.active-staff-card:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 20px rgba(6, 214, 160, 0.12);
+}
+
+.active-staff-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--accent-gradient);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 18px;
+    color: white;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.active-staff-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.active-staff-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.active-staff-since {
+    font-size: 12px;
+    color: var(--green);
+    opacity: 0.85;
+}
+
+@media (max-width: 480px) {
+    .otp-digit {
+        width: 40px;
+        height: 50px;
+        font-size: 20px;
+        border-radius: 10px;
+    }
+
+    .otp-input-row {
+        gap: 7px;
+    }
+}
