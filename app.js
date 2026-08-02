@@ -2541,9 +2541,12 @@
         }
 
         const html = notifs.map(n => `
-      <div class="card glass ${!n.is_read ? 'unread-glow' : ''}">
-        <h4>${n.title}</h4>
-        <p>${n.message}</p>
+      <div class="card glass ${!n.is_read ? 'unread-glow' : ''}" style="position:relative; cursor:pointer;" onclick="window.deleteNotification('${n.id}')" title="Click to dismiss">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <h4 style="margin:0; padding-right:20px;">${n.title}</h4>
+          <button style="position:absolute; top:12px; right:12px; background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 6px; border-radius:4px;" onclick="event.stopPropagation(); window.deleteNotification('${n.id}')" title="Delete notification">✕</button>
+        </div>
+        <p style="margin-top:6px;">${n.message}</p>
         <span style="display:block; font-size:10px; color:var(--text-secondary); margin-top:6px; opacity:0.7;">
           ${new Date(n.created_at).toLocaleString()}
         </span>
@@ -2554,11 +2557,27 @@
         if (staffList) staffList.innerHTML = html;
     }
 
+    window.deleteNotification = async function(notifId) {
+        const { error } = await sb.from('notifications').delete().eq('id', notifId);
+        if (error) {
+            console.error('Error deleting notification:', error);
+            return;
+        }
+        toast('Notification deleted');
+        renderNotifications();
+    };
+
     async function markAllAsRead() {
         const session = getSession();
         if (!session) return;
-        await sb.from('notifications').update({ is_read: true }).eq('user_id', session.id).eq('is_read', false);
-        toast('Notifications cleared!');
+        // Delete all notifications for this user upon marking as read / clearing
+        const { error } = await sb.from('notifications').delete().eq('user_id', session.id);
+        if (error) {
+            console.error('Error deleting notifications:', error);
+            toast('Failed to clear notifications', 'error');
+            return;
+        }
+        toast('All notifications marked as read & deleted!');
         renderNotifications();
     }
 
