@@ -2473,10 +2473,15 @@
         const session = getSession();
         if (!session || !session.id) return;
 
+        // Auto-purge any old read notifications from Supabase database
+        await sb.from('notifications').delete().eq('user_id', session.id).eq('is_read', true);
+
+        // Fetch only active unread notifications
         const { data: notifs } = await sb
             .from('notifications')
             .select('*')
             .eq('user_id', session.id)
+            .eq('is_read', false)
             .order('created_at', { ascending: false })
             .limit(20);
 
