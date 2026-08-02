@@ -28,6 +28,56 @@
     function getSession() { try { return JSON.parse(localStorage.getItem('ss_session')); } catch { return null; } }
     function clearSession() { localStorage.removeItem('ss_session'); }
 
+    // ─── Push / Background Notifications ────────────────
+    // Sends current session to the Service Worker so it can poll
+    // for new notifications even when the app tab is closed.
+    async function setupPushNotifications(session) {
+        if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+
+        // Ask permission (only prompts once; subsequent calls are instant)
+        let permission = Notification.permission;
+        if (permission === 'default') {
+            permission = await Notification.requestPermission();
+        }
+        if (permission !== 'granted') return;
+
+        try {
+            const reg = await navigator.serviceWorker.ready;
+
+            // Pass session into the SW so it can poll Supabase in the background
+            if (reg.active) {
+                reg.active.postMessage({
+                    type: 'SET_SESSION',
+                    session: session,
+                    lastSeenId: null
+                });
+            }
+
+            // Register Periodic Background Sync (fires ~every 5 min when tab closed)
+            if ('periodicSync' in reg) {
+                try {
+                    await reg.periodicSync.register('check-notifications', {
+                        minInterval: 5 * 60 * 1000 // 5 minutes
+                    });
+                } catch (e) {
+                    // periodicSync not permitted (needs installed PWA on some browsers)
+                    console.log('[Push] Periodic sync not available:', e.message);
+                }
+            }
+        } catch (e) {
+            console.error('[Push] setupPushNotifications error:', e);
+        }
+    }
+
+    async function clearPushSession() {
+        if (!('serviceWorker' in navigator)) return;
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            if (reg.active) reg.active.postMessage({ type: 'CLEAR_SESSION' });
+        } catch (e) {}
+    }
+
+
     // ─── Toast ──────────────────────────────────────────
     let toastTimer;
     function toast(msg, type = 'success') {
@@ -269,6 +319,7 @@
 
         setSession(user);
         await routeAfterLogin(user);
+        setupPushNotifications(user);
         $('#form-login').reset();
     });
 
@@ -483,20 +534,28 @@
                 showView('view-owner-waiting');
             }
         } else if (user.role === 'staff') {
-            const { data: req } = await sb
+            const { data: reqs } = await sb
                 .from('join_requests')
                 .select('*')
-                .eq('user_id', user.id)
-                .maybeSingle();
+                .eq('user_id', user.id);
 
-            if (!req) {
+            if (!reqs || reqs.length === 0) {
                 showView('view-choose-role');
-            } else if (req.status === 'APPROVED') {
-                await enterStaffDashboard(user);
-            } else if (req.status === 'REJECTED') {
-                showView('view-rejected');
             } else {
-                showView('view-waiting');
+                const approvedReqs = reqs.filter(r => r.status === 'APPROVED');
+                if (approvedReqs.length > 0) {
+                    const matchingApp = approvedReqs.find(r => r.company_id === user.company_id);
+                    if (!matchingApp) {
+                        user.company_id = approvedReqs[0].company_id;
+                        await sb.from('users').update({ company_id: user.company_id }).eq('id', user.id);
+                        setSession(user);
+                    }
+                    await enterStaffDashboard(user);
+                } else if (reqs.some(r => r.status === 'REJECTED') && !reqs.some(r => r.status === 'PENDING')) {
+                    showView('view-rejected');
+                } else {
+                    showView('view-waiting');
+                }
             }
         } else {
             showView('view-choose-role');
@@ -521,7 +580,7 @@
     $('#back-to-role-from-join').addEventListener('click', (e) => { e.preventDefault(); showView('view-choose-role'); });
 
     // Logout
-    function logout() { clearSession(); showView('view-login'); toast('Signed out'); }
+    function logout() { clearSession(); clearPushSession(); showView('view-login'); toast('Signed out'); }
     if ($('#btn-logout-owner')) $('#btn-logout-owner').addEventListener('click', logout);
     if ($('#btn-logout-owner-mobile')) $('#btn-logout-owner-mobile').addEventListener('click', logout);
     if ($('#btn-logout-staff')) $('#btn-logout-staff').addEventListener('click', logout);
@@ -578,20 +637,24 @@
         const session = getSession();
         if (!session) return;
 
-        const { data: req } = await sb
+        const { data: reqs } = await sb
             .from('join_requests')
             .select('*')
-            .eq('user_id', session.id)
-            .maybeSingle();
+            .eq('user_id', session.id);
 
-        if (!req) return;
+        if (!reqs || reqs.length === 0) return;
 
-        if (req.status === 'APPROVED') {
+        const approved = reqs.find(r => r.status === 'APPROVED');
+        if (approved) {
             const { data: freshUser } = await sb.from('users').select('*').eq('id', session.id).single();
+            if (!freshUser.company_id) {
+                await sb.from('users').update({ company_id: approved.company_id }).eq('id', session.id);
+                freshUser.company_id = approved.company_id;
+            }
             setSession(freshUser);
             await enterStaffDashboard(freshUser);
             toast('You have been approved! 🎉');
-        } else if (req.status === 'REJECTED') {
+        } else if (reqs.every(r => r.status === 'REJECTED')) {
             showView('view-rejected');
         } else {
             toast('Still waiting for approval…');
@@ -703,15 +766,16 @@
             return;
         }
 
-        // Check if already requested
+        // Check if already requested for THIS specific company
         const { data: existing } = await sb
             .from('join_requests')
             .select('id')
             .eq('user_id', session.id)
+            .eq('company_id', company.id)
             .maybeSingle();
 
         if (existing) {
-            toast('You already have a join request.', 'error');
+            toast('You already have a join request for this company.', 'error');
             return;
         }
 
@@ -721,11 +785,10 @@
             status: 'PENDING',
         });
 
-        await sb.from('users').update({
-            role: 'staff',
-            company_id: company.id,
-            status: 'PENDING'
-        }).eq('id', session.id);
+        // Set user role & first company_id if not set yet
+        const updateData = { role: 'staff', status: 'PENDING' };
+        if (!session.company_id) updateData.company_id = company.id;
+        await sb.from('users').update(updateData).eq('id', session.id);
 
         const { data: freshUser } = await sb.from('users').select('*').eq('id', session.id).single();
         setSession(freshUser);
@@ -843,8 +906,17 @@
     }
 
     window.approveRequest = async function (reqId, userId) {
+        // Get the join request to know which company to set
+        const { data: req } = await sb.from('join_requests').select('*').eq('id', reqId).single();
         await sb.from('join_requests').update({ status: 'APPROVED' }).eq('id', reqId);
-        await sb.from('users').update({ status: 'APPROVED' }).eq('id', userId);
+
+        // Only set company_id if not already set (preserve current active company)
+        const { data: staffUser } = await sb.from('users').select('company_id').eq('id', userId).single();
+        const updateData = { status: 'APPROVED' };
+        if (!staffUser || !staffUser.company_id) {
+            updateData.company_id = req ? req.company_id : null;
+        }
+        await sb.from('users').update(updateData).eq('id', userId);
         toast('Staff approved ✅');
 
         const session = getSession();
@@ -1626,7 +1698,7 @@
         // Profile upload
         $('#staff-profile-upload').onchange = (e) => handleProfileUpload(e, user, '#staff-avatar', '#staff-profile-avatar-preview');
         $('#btn-staff-profile-logout').onclick = logout;
-        $('#btn-staff-switch-account').onclick = logout;
+        // btn-staff-switch-account is handled by the global document click listener (opens modal)
 
         // Hours filter buttons
         $('#btn-hours-filter-apply').addEventListener('click', async () => {
@@ -2587,6 +2659,8 @@
             if (freshUser) {
                 setSession(freshUser);
                 await routeAfterLogin(freshUser);
+                // Set up background push notifications after routing in
+                setupPushNotifications(freshUser);
                 return;
             }
         }
@@ -2886,6 +2960,191 @@ StaffSync Team`;
     }
 
     checkQRParam();
+
+    // ─────────────────────────────────────────────────────
+    // SWITCH COMPANY FEATURE
+    // ─────────────────────────────────────────────────────
+
+    // Open modal from any trigger button (profile card, dropdown, header)
+    function openSwitchCompanyModal() {
+        const modal = $('#modal-switch-company');
+        if (!modal) return;
+        // Always show main view first
+        showSwitchCompanyView('main');
+        modal.classList.add('open');
+        renderCompanyAccountsList();
+    }
+
+    function closeSwitchCompanyModal() {
+        const modal = $('#modal-switch-company');
+        if (modal) modal.classList.remove('open');
+    }
+
+    function showSwitchCompanyView(which) {
+        const main = $('#view-switch-company-main');
+        const join = $('#view-switch-company-join');
+        if (main) main.style.display = which === 'main' ? 'block' : 'none';
+        if (join) join.style.display = which === 'join' ? 'block' : 'none';
+    }
+
+    async function renderCompanyAccountsList() {
+        const container = $('#company-accounts-list');
+        if (!container) return;
+        const session = getSession();
+        if (!session) return;
+
+        container.innerHTML = '<p class="empty-state">Loading...</p>';
+
+        const { data: reqs } = await sb
+            .from('join_requests')
+            .select('*')
+            .eq('user_id', session.id);
+
+        if (!reqs || reqs.length === 0) {
+            container.innerHTML = '<p class="empty-state">No companies joined yet.</p>';
+            return;
+        }
+
+        const companyIds = [...new Set(reqs.map(r => r.company_id))];
+        const { data: companies } = await sb.from('companies').select('*').in('id', companyIds);
+        const companyMap = {};
+        if (companies) companies.forEach(c => { companyMap[c.id] = c; });
+
+        container.innerHTML = reqs.map(req => {
+            const comp = companyMap[req.company_id] || { name: 'Unknown Company', code: '—' };
+            const isActive = req.company_id === session.company_id && req.status === 'APPROVED';
+            const isApproved = req.status === 'APPROVED';
+            const isPending = req.status === 'PENDING';
+
+            let badge = '';
+            let action = '';
+
+            if (isActive) {
+                badge = '<span class="status-badge approved" style="margin:0;font-size:11px;">🟢 Active</span>';
+            } else if (isApproved) {
+                badge = '<span class="status-badge approved" style="margin:0;font-size:11px;">✅ Approved</span>';
+                action = `<button class="btn btn-sm btn-primary" onclick="window.switchToCompany('${req.company_id}')" style="padding:5px 12px;font-size:12px;">Switch</button>`;
+            } else if (isPending) {
+                badge = '<span class="status-badge pending" style="margin:0;font-size:11px;">⏳ Pending</span>';
+            } else {
+                badge = '<span class="status-badge rejected" style="margin:0;font-size:11px;">❌ Rejected</span>';
+            }
+
+            return `
+                <div class="company-account-card ${isActive ? 'active' : ''}">
+                    <div class="company-account-info">
+                        <div class="company-account-icon">${(comp.name||'C').charAt(0).toUpperCase()}</div>
+                        <div>
+                            <div class="company-account-title">${comp.name || 'Company'}</div>
+                            <div class="company-account-code">Code: ${comp.code || '—'}</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        ${badge}
+                        ${action}
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    window.switchToCompany = async function(companyId) {
+        const session = getSession();
+        if (!session) return;
+        const { error } = await sb.from('users').update({ company_id: companyId }).eq('id', session.id);
+        if (error) { toast('Failed to switch: ' + error.message, 'error'); return; }
+        session.company_id = companyId;
+        setSession(session);
+        closeSwitchCompanyModal();
+        toast('✅ Switched company workspace!');
+        await enterStaffDashboard(session);
+    };
+
+    // Bind open triggers
+    document.addEventListener('click', (e) => {
+        const trigger = e.target.closest('#btn-staff-switch-account, #btn-staff-switch-company-menu, #btn-staff-switch-company-header');
+        if (trigger) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('active'));
+            openSwitchCompanyModal();
+        }
+    });
+
+    // Close modal buttons
+    const _closeSwitchBtns = ['btn-close-switch-company-modal', 'btn-close-switch-company-footer'];
+    _closeSwitchBtns.forEach(id => {
+        const el = $('#' + id);
+        if (el) el.addEventListener('click', closeSwitchCompanyModal);
+    });
+
+    // Close when clicking backdrop
+    const _switchModal = $('#modal-switch-company');
+    if (_switchModal) {
+        _switchModal.addEventListener('click', (e) => {
+            if (e.target === _switchModal) closeSwitchCompanyModal();
+        });
+    }
+
+    // Show join company form when clicking the Join New card
+    const _triggerJoin = $('#btn-trigger-join-new-company');
+    if (_triggerJoin) {
+        _triggerJoin.addEventListener('click', () => {
+            showSwitchCompanyView('join');
+            setTimeout(() => { const inp = $('#switch-company-code-input'); if (inp) inp.focus(); }, 100);
+        });
+    }
+
+    // Back button inside join form
+    const _backBtn = $('#btn-back-to-company-list');
+    if (_backBtn) _backBtn.addEventListener('click', () => showSwitchCompanyView('main'));
+
+    // Submit join form inside modal
+    const _formSwitchJoin = $('#form-switch-join-company');
+    if (_formSwitchJoin) {
+        _formSwitchJoin.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const session = getSession();
+            if (!session) return;
+
+            const input = $('#switch-company-code-input');
+            const code = input.value.trim().toUpperCase();
+            if (!code) return;
+
+            const submitBtn = $('#btn-submit-switch-join');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Sending...'; }
+
+            try {
+                const { data: company } = await sb.from('companies').select('*').eq('code', code).maybeSingle();
+                if (!company) { toast('Company not found. Check the code.', 'error'); return; }
+
+                // Check if already joined this specific company
+                const { data: existing } = await sb
+                    .from('join_requests').select('id')
+                    .eq('user_id', session.id)
+                    .eq('company_id', company.id)
+                    .maybeSingle();
+
+                if (existing) { toast('You already joined or requested ' + company.name, 'error'); return; }
+
+                await sb.from('join_requests').insert({
+                    user_id: session.id,
+                    company_id: company.id,
+                    status: 'PENDING',
+                });
+
+                toast('Join request sent to ' + company.name + '! ⏳ Waiting for approval.');
+                input.value = '';
+                // Go back to main view and refresh list
+                showSwitchCompanyView('main');
+                await renderCompanyAccountsList();
+            } catch (err) {
+                console.error('Switch join error:', err);
+                toast('Failed to send join request.', 'error');
+            } finally {
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Send Join Request'; }
+            }
+        });
+    }
 
     init();
 

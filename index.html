@@ -706,6 +706,8 @@
                                     <li><a href="#" class="nav-link" data-tab="staff-profile"><span
                                                 class="nav-icon">👤</span> My
                                             Profile</a></li>
+                                    <li><a href="#" class="nav-link" id="btn-staff-switch-company-menu"><span
+                                                class="nav-icon">🏢</span> Switch Company</a></li>
                                     <li><a href="#" class="nav-link" data-tab="staff-earnings"><span
                                                 class="nav-icon">💷</span>
                                             Earnings</a></li>
@@ -716,7 +718,10 @@
                         </div>
                         <div>
                             <h2 id="staff-dashboard-title">Clock In / Out</h2>
-                            <p class="company-name-display" id="staff-company-name">—</p>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <p class="company-name-display" id="staff-company-name" style="margin:0;">—</p>
+                                <button class="btn btn-sm btn-outline" id="btn-staff-switch-company-header" style="padding: 2px 8px; font-size: 11px;">🏢 Switch</button>
+                            </div>
                         </div>
                     </div>
 
@@ -929,7 +934,7 @@
                             </div>
                         </div>
                         <div class="profile-actions" style="margin-top: 30px; display: flex; gap: 10px;">
-                            <button class="btn btn-outline" id="btn-staff-switch-account">Switch Account</button>
+                            <button class="btn btn-outline" id="btn-staff-switch-account">🏢 Switch Company</button>
                             <button class="btn btn-outline" id="btn-staff-profile-logout"
                                 style="border-color:var(--red); color:var(--red);">Sign Out</button>
                         </div>
@@ -1024,6 +1029,67 @@
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-outline" id="btn-close-staff-detail-footer">Close</button>
+                </div>
+            </div>
+        </div>
+        <!-- ========== SWITCH COMPANY MODAL ========== -->
+        <div class="modal-overlay" id="modal-switch-company">
+            <div class="modal-card glass" style="max-width: 520px; width: 92vw;">
+                <div class="modal-header">
+                    <h3>🏢 Switch Company Workspace</h3>
+                    <button class="modal-close" id="btn-close-switch-company-modal">&times;</button>
+                </div>
+                
+                <div class="modal-body" style="padding: 20px;">
+                    <!-- Main View: Join New Company Card + List of Joined Companies -->
+                    <div id="view-switch-company-main">
+                        <!-- Option 1: Join a New Company Card -->
+                        <div id="btn-trigger-join-new-company" style="display:flex; align-items:center; justify-content:space-between; padding: 14px 16px; border-radius: var(--radius-md); background: rgba(99, 102, 241, 0.15); border: 1px dashed var(--accent-light); cursor: pointer; margin-bottom: 20px; transition: all 0.2s ease;">
+                            <div style="display:flex; align-items:center; gap: 12px;">
+                                <div style="width:36px; height:36px; border-radius:10px; background:var(--accent-light); color:white; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:bold;">➕</div>
+                                <div>
+                                    <div style="font-weight: 600; font-size: 14px; color: var(--text-primary);">Join a New Company</div>
+                                    <div style="font-size: 12px; color: var(--text-muted);">Click to enter company code</div>
+                                </div>
+                            </div>
+                            <span style="font-size:18px; color:var(--accent-light);">➔</span>
+                        </div>
+
+                        <!-- Option 2: Already Joined Companies List -->
+                        <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--text-primary); display:flex; align-items:center; gap:6px;">
+                            <span>📋</span> Already Joined Companies
+                        </h4>
+                        <div id="company-accounts-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 240px; overflow-y: auto; padding-right: 4px;">
+                            <p class="empty-state">Loading companies...</p>
+                        </div>
+                    </div>
+
+                    <!-- Join Form View: Enter Company Code Prompt -->
+                    <div id="view-switch-company-join" style="display: none;">
+                        <div style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
+                            <p style="color:var(--accent-light); font-size: 13px; margin: 0; font-weight: 600;">
+                                🔑 Enter Company Code to Join
+                            </p>
+                            <p style="color:var(--text-muted); font-size: 12px; margin-top: 4px; margin-bottom: 0;">
+                                Ask your manager or employer for their company code to send a join request.
+                            </p>
+                        </div>
+
+                        <form id="form-switch-join-company" style="display: flex; flex-direction: column; gap: 14px;">
+                            <div class="input-group" style="margin: 0;">
+                                <label for="switch-company-code-input" style="font-size: 12px;">Company Code</label>
+                                <input type="text" id="switch-company-code-input" placeholder="e.g. COMP-1234" class="input-field" style="text-transform: uppercase; font-size: 15px; letter-spacing: 1px;" required>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button type="button" class="btn btn-outline" id="btn-back-to-company-list" style="flex:1;">← Back</button>
+                                <button type="submit" class="btn btn-primary" id="btn-submit-switch-join" style="flex:2;">Send Join Request</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="padding: 12px 20px;">
+                    <button class="btn btn-outline" id="btn-close-switch-company-footer" style="width: 100%;">Close</button>
                 </div>
             </div>
         </div>
