@@ -1,19 +1,18 @@
 /* ===================================================
-   SmartStaffs — Service Worker
-   Handles: Caching, Background Sync, Push Notifications
+   SmartStaffs — Service Worker v3
+   Background notification delivery even when app is closed
    =================================================== */
 
-const CACHE_NAME = 'staffsync-cache-v2';
-const urlsToCache = [
-  './',
-  './index.html',
-  './styles.css',
-  './app.js'
-];
+const CACHE_NAME = 'staffsync-cache-v3';
+const urlsToCache = ['./', './index.html', './styles.css', './app.js'];
 
-// ─── Supabase config (mirrored from app.js) ─────────
 const SUPABASE_URL = 'https://dkroffwlvegsrkjowljb.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_SZJEfW2zbYx4kiLwyqxdKg_VNONEVwA';
+
+// ─── Session state ────────────────────────────────────
+let storedSession = null;
+let lastSeenTimestamp = null; // ISO string — use created_at not UUID for comparison
+let _pollTimer = null;
 
 // ─── Install ─────────────────────────────────────────
 self.addEventListener('install', event => {
@@ -31,48 +30,67 @@ self.addEventListener('activate', event => {
     )
   );
   self.clients.claim();
+  // Start polling loop once activated
+  startPolling();
 });
 
-// ─── Fetch (cache-first, skip Supabase) ─────────────
+// ─── Fetch ───────────────────────────────────────────
 self.addEventListener('fetch', event => {
-  if (event.request.url.includes('supabase.co') || event.request.url.includes('mixkit.co')) {
+  if (
+    event.request.url.includes('supabase.co') ||
+    event.request.url.includes('mixkit.co') ||
+    event.request.url.includes('unpkg.com')
+  ) {
     return;
   }
   event.respondWith(
-    caches.match(event.request).then(response => response || fetch(event.request))
+    caches.match(event.request).then(r => r || fetch(event.request))
   );
 });
 
-// ─── Background Notification Polling ─────────────────
-// Store session info sent from main app
-let storedSession = null;
-let lastSeenNotifId = null;
-
+// ─── Messages from main app ───────────────────────────
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SET_SESSION') {
-    storedSession = event.data.session;
-    lastSeenNotifId = event.data.lastSeenId || null;
+  const data = event.data;
+  if (!data) return;
+
+  if (data.type === 'SET_SESSION') {
+    storedSession = data.session;
+    startPolling(); // restart poll with new session
   }
-  if (event.data && event.data.type === 'CLEAR_SESSION') {
+
+  if (data.type === 'CLEAR_SESSION') {
     storedSession = null;
-    lastSeenNotifId = null;
+    lastSeenTimestamp = null;
+    stopPolling();
+  }
+
+  // Main page asks SW to show a notification directly
+  if (data.type === 'SHOW_NOTIFICATION') {
+    self.registration.showNotification(data.title || 'SmartStaffs', {
+      body: data.body || '',
+      icon: './logo.png',
+      badge: './logo.png',
+      tag: data.tag || 'staffsync-notif',
+      renotify: true,
+      data: { url: './' }
+    });
   }
 });
 
-// ─── Periodic Background Sync ─────────────────────────
+// ─── Periodic Background Sync (Chrome PWA only) ──────
 self.addEventListener('periodicsync', event => {
   if (event.tag === 'check-notifications') {
     event.waitUntil(checkAndShowNotifications());
   }
 });
 
-// ─── Push (for future Web Push integration) ──────────
+// ─── Push (future Web Push integration) ──────────────
 self.addEventListener('push', event => {
-  let data = { title: 'SmartStaffs', body: 'You have a new notification.' };
-  try { data = event.data.json(); } catch (e) {}
+  let d = { title: 'SmartStaffs', body: 'You have a new notification.' };
+  try { d = event.data.json(); } catch (e) {}
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
+    self.registration.showNotification(d.title, {
+      body: d.body,
       icon: './logo.png',
       badge: './logo.png',
       tag: 'staffsync-push',
@@ -82,35 +100,79 @@ self.addEventListener('push', event => {
   );
 });
 
-// ─── Notification Click ───────────────────────────────
+// ─── Notification click → open app ───────────────────
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || './';
+  const url = (event.notification.data && event.notification.data.url) || './';
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          return client.focus();
-        }
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const c of list) {
+        if ('focus' in c) return c.focus();
       }
-      if (clients.openWindow) return clients.openWindow(targetUrl);
+      if (clients.openWindow) return clients.openWindow(url);
     })
   );
 });
 
-// ─── Core: Poll Supabase & Show Native Notification ──
+// ─── Polling Engine ───────────────────────────────────
+// The SW keeps itself alive by scheduling recurring checks.
+// When the app page is open, the main thread handles notifications;
+// the SW only fires native popups when no app window is visible.
+
+function startPolling() {
+  stopPolling(); // clear any existing timer
+  schedulePoll();
+}
+
+function stopPolling() {
+  if (_pollTimer) {
+    clearTimeout(_pollTimer);
+    _pollTimer = null;
+  }
+}
+
+function schedulePoll() {
+  // Poll every 60 seconds
+  _pollTimer = setTimeout(async () => {
+    await checkAndShowNotifications();
+    schedulePoll(); // schedule next
+  }, 60 * 1000);
+}
+
+// ─── Core: fetch Supabase & show notifications ────────
 async function checkAndShowNotifications() {
-  // Try reading session from IndexedDB if not in memory
-  const session = storedSession || (await getSessionFromIDB());
+  // Try to get session — first from memory, then from IndexedDB
+  let session = storedSession;
+  if (!session) {
+    session = await getSessionFromIDB();
+  }
   if (!session || !session.id) return;
 
+  // Get lastSeen from memory or IDB
+  if (!lastSeenTimestamp) {
+    const idbData = await getIDBData();
+    if (idbData) lastSeenTimestamp = idbData.lastSeen;
+  }
+
+  // Check if any app window is currently visible
+  const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const appIsVisible = allClients.some(c => !c.hidden && c.visibilityState !== 'hidden');
+  if (appIsVisible) return; // In-app UI is handling it
+
   try {
-    const url = `${SUPABASE_URL}/rest/v1/notifications?user_id=eq.${session.id}&is_read=eq.false&order=created_at.desc&limit=5`;
-    const res = await fetch(url, {
+    // Build query — only unread notifications newer than last seen
+    let query = `user_id=eq.${session.id}&is_read=eq.false&order=created_at.desc&limit=5`;
+    if (lastSeenTimestamp) {
+      // URL-encode the timestamp filter
+      const ts = encodeURIComponent(lastSeenTimestamp);
+      query += `&created_at=gt.${ts}`;
+    }
+
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/notifications?${query}`, {
       headers: {
         'apikey': SUPABASE_KEY,
         'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json'
+        'Accept': 'application/json'
       }
     });
 
@@ -118,79 +180,69 @@ async function checkAndShowNotifications() {
     const notifs = await res.json();
     if (!notifs || notifs.length === 0) return;
 
-    // Only show notifs newer than what we've already seen
-    const newNotifs = lastSeenNotifId
-      ? notifs.filter(n => n.id > lastSeenNotifId)
-      : notifs;
+    // Update last seen to newest notification
+    lastSeenTimestamp = notifs[0].created_at;
+    await saveIDBData(session, lastSeenTimestamp);
 
-    if (newNotifs.length === 0) return;
-
-    // Check if app window is currently focused — skip native notif if open & visible
-    const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const appIsVisible = allClients.some(c => !c.hidden);
-
-    // Always update last seen
-    lastSeenNotifId = notifs[0].id;
-    await saveSessionToIDB(session, lastSeenNotifId);
-
-    if (appIsVisible) return; // App is open, in-app UI handles it
-
-    // Show native OS notification for each new item
-    for (const notif of newNotifs.slice(0, 3)) {
-      await self.registration.showNotification(notif.title || 'SmartStaffs', {
-        body: notif.message || 'You have a new notification.',
+    // Show native OS notifications (up to 3)
+    for (let i = 0; i < Math.min(notifs.length, 3); i++) {
+      const n = notifs[i];
+      await self.registration.showNotification(n.title || 'SmartStaffs', {
+        body: n.message || 'You have a new notification.',
         icon: './logo.png',
         badge: './logo.png',
-        tag: `staffsync-notif-${notif.id}`,
+        tag: `staffsync-${n.id}`,
         renotify: true,
         silent: false,
-        data: { url: './', notifId: notif.id }
+        data: { url: './' }
       });
     }
   } catch (err) {
-    console.error('[SW] checkAndShowNotifications error:', err);
+    console.error('[SW] checkAndShowNotifications:', err);
   }
 }
 
-// ─── IndexedDB helpers (persist session across SW restarts) ──
+// ─── IndexedDB — persist session & lastSeen ──────────
 function openIDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('staffsync-sw', 1);
+    const req = indexedDB.open('staffsync-sw', 2);
     req.onupgradeneeded = e => {
-      e.target.result.createObjectStore('session', { keyPath: 'key' });
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('data')) {
+        db.createObjectStore('data', { keyPath: 'key' });
+      }
     };
     req.onsuccess = e => resolve(e.target.result);
-    req.onerror = e => reject(e.target.error);
+    req.onerror = () => reject(req.error);
   });
 }
 
-async function saveSessionToIDB(session, lastId) {
+async function saveIDBData(session, lastSeen) {
   try {
     const db = await openIDB();
-    const tx = db.transaction('session', 'readwrite');
-    tx.objectStore('session').put({ key: 'current', session, lastId });
+    const tx = db.transaction('data', 'readwrite');
+    tx.objectStore('data').put({ key: 'sw_state', session, lastSeen });
   } catch (e) {}
 }
 
-async function getSessionFromIDB() {
+async function getIDBData() {
   try {
     const db = await openIDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction('session', 'readonly');
-      const req = tx.objectStore('session').get('current');
-      req.onsuccess = e => {
-        const record = e.target.result;
-        if (record) {
-          storedSession = record.session;
-          lastSeenNotifId = record.lastId;
-          resolve(record.session);
-        } else {
-          resolve(null);
-        }
-      };
+    return new Promise(resolve => {
+      const tx = db.transaction('data', 'readonly');
+      const req = tx.objectStore('data').get('sw_state');
+      req.onsuccess = e => resolve(e.target.result || null);
       req.onerror = () => resolve(null);
     });
-  } catch (e) {
-    return null;
+  } catch (e) { return null; }
+}
+
+async function getSessionFromIDB() {
+  const d = await getIDBData();
+  if (d) {
+    storedSession = d.session;
+    lastSeenTimestamp = d.lastSeen;
+    return d.session;
   }
+  return null;
 }

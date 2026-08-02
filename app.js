@@ -29,53 +29,78 @@
     function clearSession() { localStorage.removeItem('ss_session'); }
 
     // ─── Push / Background Notifications ────────────────
-    // Sends current session to the Service Worker so it can poll
-    // for new notifications even when the app tab is closed.
-    async function setupPushNotifications(session) {
-        if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+    // Multi-layer approach:
+    //  1. Ask permission on login
+    //  2. Show native OS notification from in-page poll (when tab not focused)
+    //  3. Service worker polls Supabase independently when page is closed
 
-        // Ask permission (only prompts once; subsequent calls are instant)
+    let _notifPermissionGranted = false;
+
+    async function setupPushNotifications(session) {
+        if (!('Notification' in window)) return;
+
         let permission = Notification.permission;
         if (permission === 'default') {
             permission = await Notification.requestPermission();
         }
-        if (permission !== 'granted') return;
+        _notifPermissionGranted = (permission === 'granted');
 
+        if (!_notifPermissionGranted) return;
+
+        // Save session info to localStorage for the SW to read directly
+        // (avoids postMessage race conditions on first load)
         try {
-            const reg = await navigator.serviceWorker.ready;
+            localStorage.setItem('ss_notif_session', JSON.stringify({
+                id: session.id,
+                company_id: session.company_id,
+                lastChecked: new Date().toISOString()
+            }));
+        } catch (e) {}
 
-            // Pass session into the SW so it can poll Supabase in the background
-            if (reg.active) {
-                reg.active.postMessage({
-                    type: 'SET_SESSION',
-                    session: session,
-                    lastSeenId: null
-                });
-            }
-
-            // Register Periodic Background Sync (fires ~every 5 min when tab closed)
-            if ('periodicSync' in reg) {
-                try {
-                    await reg.periodicSync.register('check-notifications', {
-                        minInterval: 5 * 60 * 1000 // 5 minutes
-                    });
-                } catch (e) {
-                    // periodicSync not permitted (needs installed PWA on some browsers)
-                    console.log('[Push] Periodic sync not available:', e.message);
+        // Tell the service worker about the session too
+        if ('serviceWorker' in navigator) {
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                const sw = reg.active || reg.waiting || reg.installing;
+                if (sw) {
+                    sw.postMessage({ type: 'SET_SESSION', session });
                 }
-            }
-        } catch (e) {
-            console.error('[Push] setupPushNotifications error:', e);
+            } catch (e) {}
         }
     }
 
     async function clearPushSession() {
-        if (!('serviceWorker' in navigator)) return;
-        try {
-            const reg = await navigator.serviceWorker.ready;
-            if (reg.active) reg.active.postMessage({ type: 'CLEAR_SESSION' });
-        } catch (e) {}
+        localStorage.removeItem('ss_notif_session');
+        localStorage.removeItem('ss_notif_last_seen');
+        if ('serviceWorker' in navigator) {
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                if (reg.active) reg.active.postMessage({ type: 'CLEAR_SESSION' });
+            } catch (e) {}
+        }
     }
+
+    // Show a native OS notification popup
+    function fireNativeNotification(title, body, tag) {
+        if (!_notifPermissionGranted || Notification.permission !== 'granted') return;
+        try {
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                // Use SW to show notification (works more reliably)
+                navigator.serviceWorker.controller.postMessage({
+                    type: 'SHOW_NOTIFICATION',
+                    title,
+                    body,
+                    tag: tag || 'staffsync-notif'
+                });
+            } else {
+                // Fallback: direct Notification API
+                new Notification(title, { body, icon: './logo.png', tag: tag || 'staffsync-notif' });
+            }
+        } catch (e) {
+            console.log('[Notif] Could not fire notification:', e);
+        }
+    }
+
 
 
     // ─── Toast ──────────────────────────────────────────
@@ -2442,6 +2467,7 @@
     // GLOBAL NOTIFICATIONS
     // ─────────────────────────────────────────────────────
     let previousUnreadCount = 0;
+    let _lastNativeNotifTime = null; // prevent duplicate native popups
 
     async function renderNotifications() {
         const session = getSession();
@@ -2468,7 +2494,33 @@
             return;
         }
 
-        const unreadCount = notifs.filter(n => !n.is_read).length;
+        const unreadNotifs = notifs.filter(n => !n.is_read);
+        const unreadCount = unreadNotifs.length;
+
+        // ── Native OS notification when tab is hidden / not focused ──
+        if (unreadCount > previousUnreadCount && document.hidden) {
+            // Find truly new ones (newer than last time we showed a native notif)
+            const cutoff = _lastNativeNotifTime
+                ? new Date(_lastNativeNotifTime)
+                : new Date(Date.now() - 60000); // fallback: last 60s
+
+            const brandNew = unreadNotifs.filter(n => new Date(n.created_at) > cutoff);
+            brandNew.slice(0, 3).forEach((n, i) => {
+                setTimeout(() => {
+                    fireNativeNotification(
+                        n.title || 'SmartStaffs',
+                        n.message || 'You have a new notification.',
+                        `staffsync-${n.id}`
+                    );
+                }, i * 500);
+            });
+            if (brandNew.length > 0) _lastNativeNotifTime = brandNew[0].created_at;
+        }
+
+        // ── Update last-seen timestamp in localStorage so SW can use it ──
+        if (notifs.length > 0) {
+            try { localStorage.setItem('ss_notif_last_seen', notifs[0].created_at); } catch (e) {}
+        }
 
         // Play sound if unread count goes UP
         if (unreadCount > previousUnreadCount) {
@@ -2515,6 +2567,56 @@
 
     // Periodically check for new notifications every 30 seconds
     setInterval(renderNotifications, 30000);
+
+    // ─── Notification Permission Banner ──────────────────
+    function updateNotifBanners() {
+        const perm = ('Notification' in window) ? Notification.permission : 'denied';
+        const banners = ['#owner-notif-permission-banner', '#staff-notif-permission-banner'];
+        banners.forEach(sel => {
+            const el = $(sel);
+            if (!el) return;
+            // Show banner only if permission not yet granted
+            el.style.display = (perm !== 'granted') ? 'flex' : 'none';
+        });
+    }
+
+    // Wire up "Allow" buttons
+    async function handleEnableNotifs() {
+        const session = getSession();
+        if (session) await setupPushNotifications(session);
+        updateNotifBanners();
+        if (Notification.permission === 'granted') {
+            toast('✅ Background notifications enabled!');
+        } else if (Notification.permission === 'denied') {
+            toast('🚫 Notifications blocked. Please enable in browser settings.', 'error');
+        }
+    }
+
+    // Wire up "Test" buttons — fires an immediate native popup
+    function handleTestNotif() {
+        if (Notification.permission !== 'granted') {
+            toast('Please allow notifications first.', 'error');
+            return;
+        }
+        fireNativeNotification(
+            '🔔 SmartStaffs Test',
+            'Background notifications are working! You will get these even when the app is closed.',
+            'staffsync-test'
+        );
+        toast('Test notification sent!');
+    }
+
+    ['#btn-enable-notifs-owner', '#btn-enable-notifs-staff'].forEach(sel => {
+        const el = $(sel);
+        if (el) el.addEventListener('click', handleEnableNotifs);
+    });
+    ['#btn-test-notif-owner', '#btn-test-notif-staff'].forEach(sel => {
+        const el = $(sel);
+        if (el) el.addEventListener('click', handleTestNotif);
+    });
+
+    // Show/hide banners based on current permission
+    updateNotifBanners();
 
     // ─────────────────────────────────────────────────────
     // OWNER: NOTIFY CLOCK EVENT (in-app notification)

@@ -630,6 +630,17 @@
                         <h3>Notifications</h3>
                         <button class="btn btn-outline" id="btn-read-all-notifs-owner">Mark All as Read</button>
                     </div>
+                    <!-- Notification permission banner -->
+                    <div id="owner-notif-permission-banner" style="display:none; background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.3); border-radius:12px; padding:14px 16px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                        <div>
+                            <div style="font-weight:600; font-size:13px;">🔔 Enable Background Notifications</div>
+                            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Get notified even when this app is closed</div>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-shrink:0;">
+                            <button class="btn btn-primary" id="btn-enable-notifs-owner" style="font-size:12px;padding:6px 14px;">Allow</button>
+                            <button class="btn btn-outline" id="btn-test-notif-owner" style="font-size:12px;padding:6px 14px;">Test 🔔</button>
+                        </div>
+                    </div>
                     <div class="notif-list" id="owner-notif-list" style="display:flex; flex-direction:column; gap:8px;">
                         <p class="empty-state">No notifications. You're all caught up!</p>
                     </div>
@@ -907,6 +918,17 @@
                     <div class="actions-bar" style="margin-bottom: 16px;">
                         <h3>Notifications</h3>
                         <button class="btn btn-outline" id="btn-read-all-notifs-staff">Mark All as Read</button>
+                    </div>
+                    <!-- Notification permission banner -->
+                    <div id="staff-notif-permission-banner" style="display:none; background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.3); border-radius:12px; padding:14px 16px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                        <div>
+                            <div style="font-weight:600; font-size:13px;">🔔 Enable Background Notifications</div>
+                            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Get notified even when this app is closed</div>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-shrink:0;">
+                            <button class="btn btn-primary" id="btn-enable-notifs-staff" style="font-size:12px;padding:6px 14px;">Allow</button>
+                            <button class="btn btn-outline" id="btn-test-notif-staff" style="font-size:12px;padding:6px 14px;">Test 🔔</button>
+                        </div>
                     </div>
                     <div class="notif-list" id="staff-notif-list" style="display:flex; flex-direction:column; gap:8px;">
                         <p class="empty-state">No notifications. You're all caught up!</p>
