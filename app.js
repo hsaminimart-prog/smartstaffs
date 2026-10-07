@@ -966,7 +966,7 @@
 
         const { data: requests } = await sb
             .from('join_requests')
-            .select('*, users!inner(id, name, email, total_points)')
+            .select('*, users!inner(id, name, email, total_points, hourly_rate)')
             .eq('company_id', company.id)
             .eq('status', 'APPROVED');
 
@@ -991,24 +991,49 @@
                 ? '<span class="staff-badge online">🟢 Clocked In</span>'
                 : '<span class="staff-badge offline">Offline</span>';
             const points = user.total_points || 0;
+
+            // Effective rate: custom per-staff if set, else company default
+            const effectiveRate = (user.hourly_rate != null && Number(user.hourly_rate) > 0)
+                ? Number(user.hourly_rate)
+                : Number(company.hourly_rate);
+            const isCustomRate = (user.hourly_rate != null && Number(user.hourly_rate) > 0
+                && Number(user.hourly_rate) !== Number(company.hourly_rate));
+            const rateTag = isCustomRate
+                ? `<span style="color:#67e8f9;font-weight:600;">£${effectiveRate.toFixed(2)}/hr</span> <span style="font-size:10px;color:var(--text-muted);">(custom)</span>`
+                : `<span style="color:var(--text-secondary);">£${effectiveRate.toFixed(2)}/hr</span> <span style="font-size:10px;color:var(--text-muted);">(default)</span>`;
+
             return `
         <div class="staff-item">
           <div class="staff-details">
             <div class="avatar">${user.name.charAt(0).toUpperCase()}</div>
-            <div>
+            <div style="flex:1;">
               <div class="user-name">${user.name}</div>
-              <div class="user-role">${user.email} · 🎯 <span id="display-points-${user.id}">${points}</span> pts</div>
-              <div class="edit-points-container" id="edit-points-${user.id}" style="display:none;">
+              <div class="user-role">${user.email}</div>
+              <div style="margin-top:4px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; font-size:13px;">
+                <span>🎯 <span id="display-points-${user.id}">${points}</span> pts</span>
+                <span id="display-rate-${user.id}">💷 ${rateTag}</span>
+              </div>
+              <!-- Edit Points inline -->
+              <div class="edit-points-container" id="edit-points-${user.id}" style="display:none; margin-top:6px;">
                 <input type="number" class="edit-points-input" id="input-points-${user.id}" value="${points}">
                 <button class="btn btn-save-sm" onclick="window.savePoints('${user.id}')">Save</button>
                 <button class="btn btn-cancel-sm" onclick="window.togglePointsEdit('${user.id}')">✕</button>
               </div>
+              <!-- Edit Rate inline -->
+              <div class="edit-points-container" id="edit-rate-${user.id}" style="display:none; margin-top:6px;">
+                <span style="font-size:12px;color:var(--text-muted);">£</span>
+                <input type="number" class="edit-points-input" id="input-rate-${user.id}" value="${effectiveRate.toFixed(2)}" step="0.01" min="0" placeholder="${Number(company.hourly_rate).toFixed(2)}" style="width:90px;">
+                <button class="btn btn-save-sm" onclick="window.saveStaffRate('${user.id}')">Save</button>
+                <button class="btn btn-cancel-sm" onclick="window.toggleRateEdit('${user.id}')">✕</button>
+                ${isCustomRate ? `<button class="btn btn-cancel-sm" onclick="window.resetStaffRate('${user.id}')" style="font-size:11px; opacity:0.7;">Reset to default</button>` : ''}
+              </div>
             </div>
           </div>
-          <div style="text-align: right;">
+          <div style="text-align: right; flex-shrink:0;">
             ${badge}
             <div style="margin-top: 8px; display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
-              <a href="#" onclick="window.togglePointsEdit('${user.id}'); return false;" style="font-size: 12px; color: var(--accent-light);">Edit Points</a>
+              <a href="#" onclick="window.togglePointsEdit('${user.id}'); return false;" style="font-size: 12px; color: var(--accent-light);">✏️ Edit Points</a>
+              <a href="#" onclick="window.toggleRateEdit('${user.id}'); return false;" style="font-size: 12px; color: #67e8f9;">💷 Edit Rate</a>
               <button onclick="window.deleteStaff('${user.id}', '${req.id}')" style="font-size:11px; color:var(--red); background:transparent; border:1px solid rgba(239,68,68,0.35); padding:3px 10px; border-radius:6px; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.12)'" onmouseout="this.style.background='transparent'">&#x1F5D1; Remove</button>
             </div>
           </div>
@@ -1017,14 +1042,13 @@
     }
 
     window.togglePointsEdit = function (userId) {
-        const editContainer = $('#edit-points-' + userId);
-        if (editContainer) {
-            if (editContainer.style.display === 'none') {
-                editContainer.style.display = 'flex';
-            } else {
-                editContainer.style.display = 'none';
-            }
-        }
+        const el = $('#edit-points-' + userId);
+        if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+    };
+
+    window.toggleRateEdit = function (userId) {
+        const el = $('#edit-rate-' + userId);
+        if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
     };
 
     window.savePoints = async function (userId) {
@@ -1033,15 +1057,40 @@
         const newPoints = parseInt(input.value) || 0;
 
         const { error } = await sb.from('users').update({ total_points: newPoints }).eq('id', userId);
-        if (error) {
-            toast('Failed to update points', 'error');
-            return;
-        }
+        if (error) { toast('Failed to update points', 'error'); return; }
 
         toast('Points updated! \ud83c\udfaf');
         const session = getSession();
         const { data: company } = await sb.from('companies').select('*').eq('id', session.company_id).single();
         await renderStaffList(company);
+    };
+
+    window.saveStaffRate = async function (userId) {
+        const input = $('#input-rate-' + userId);
+        if (!input) return;
+        const newRate = parseFloat(input.value);
+        if (isNaN(newRate) || newRate < 0) { toast('Please enter a valid hourly rate', 'error'); return; }
+
+        const { error } = await sb.from('users').update({ hourly_rate: newRate }).eq('id', userId);
+        if (error) { toast('Failed to update rate', 'error'); return; }
+
+        toast('Hourly rate updated! 💷');
+        const session = getSession();
+        const { data: company } = await sb.from('companies').select('*').eq('id', session.company_id).single();
+        await renderStaffList(company);
+        await renderSalaryReport(company);
+    };
+
+    window.resetStaffRate = async function (userId) {
+        if (!confirm('Reset this staff member to the company default rate?')) return;
+        const { error } = await sb.from('users').update({ hourly_rate: null }).eq('id', userId);
+        if (error) { toast('Failed to reset rate', 'error'); return; }
+
+        toast('Rate reset to company default');
+        const session = getSession();
+        const { data: company } = await sb.from('companies').select('*').eq('id', session.company_id).single();
+        await renderStaffList(company);
+        await renderSalaryReport(company);
     };
 
     // ── Salary Report ───────────────────────────────────
@@ -1067,7 +1116,7 @@
 
         const { data: approvedRequests } = await sb
             .from('join_requests')
-            .select('*, users!inner(id, name)')
+            .select('*, users!inner(id, name, hourly_rate)')
             .eq('company_id', company.id)
             .eq('status', 'APPROVED');
 
@@ -1084,7 +1133,6 @@
                 opt.textContent = req.users.name;
                 staffFilter.appendChild(opt);
             });
-            // Restore the selected value just in case
             staffFilter.value = selectedUserId || 'all';
         }
 
@@ -1112,6 +1160,7 @@
       </div>`;
 
         let totalEarnings = 0;
+        const reportRows = []; // for print
 
         // Filter the staff loop based on selected dropdown
         const staffToRender = selectedUserId === 'all'
@@ -1128,23 +1177,38 @@
             const userEntries = (entries || []).filter(e => e.user_id === user.id);
             const ms = userEntries.reduce((sum, e) => sum + (new Date(e.clock_out) - new Date(e.clock_in)), 0);
             const hours = ms / 3600000;
-            const earnings = hours * Number(company.hourly_rate);
+
+            // Use per-staff rate if set, otherwise company default
+            const staffRate = (user.hourly_rate != null && Number(user.hourly_rate) > 0)
+                ? Number(user.hourly_rate)
+                : Number(company.hourly_rate);
+            const isCustomRate = (user.hourly_rate != null && Number(user.hourly_rate) > 0
+                && Number(user.hourly_rate) !== Number(company.hourly_rate));
+
+            const earnings = hours * staffRate;
             totalEarnings += earnings;
 
-            // Encode context for the click handler
+            const rateBadge = isCustomRate
+                ? `<span style="color:#67e8f9;">${formatCurrency(staffRate)}/hr</span> <span style="font-size:10px;color:var(--text-muted);">★</span>`
+                : `${formatCurrency(staffRate)}/hr`;
+
+            // Encode context for the click handler (pass effective rate and company name)
             const ctx = encodeURIComponent(JSON.stringify({
                 userId: user.id,
                 userName: user.name,
+                companyName: company.name,
                 dateFrom: targetDateFromStr,
                 dateTo: targetDateToStr,
-                rate: company.hourly_rate
+                rate: staffRate
             }));
+
+            reportRows.push({ name: user.name, hours: formatHours(ms), rate: `£${staffRate.toFixed(2)}/hr${isCustomRate ? ' ★' : ''}`, earnings: formatCurrency(earnings) });
 
             html += `
         <div class="salary-row" style="cursor:pointer; transition:background 0.15s;" onmouseenter="this.style.background='rgba(255,255,255,0.04)'" onmouseleave="this.style.background=''" onclick="window.showStaffAttendanceDetail('${ctx}')">
           <div style="color:var(--accent-light); font-weight:600;">${user.name} <span style="font-size:11px; color:var(--text-muted); font-weight:400;">▶ details</span></div>
           <div>${formatHours(ms)}</div>
-          <div>${formatCurrency(company.hourly_rate)}/hr</div>
+          <div>${rateBadge}</div>
           <div class="salary-amount">${formatCurrency(earnings)}</div>
         </div>`;
         });
@@ -1157,13 +1221,345 @@
         <div class="salary-amount">${formatCurrency(totalEarnings)}</div>
       </div>`;
 
+        const selectedStaffReq = selectedUserId === 'all'
+            ? null
+            : approvedRequests.find(req => req.users.id === selectedUserId);
+        const selectedStaffName = selectedStaffReq ? selectedStaffReq.users.name : 'All Staff';
+
+        // Store rows for print access
+        window._lastSalaryReport = {
+            companyName: company.name,
+            dateFrom: targetDateFromStr,
+            dateTo: targetDateToStr,
+            staffFilterName: selectedStaffName,
+            rows: reportRows,
+            total: formatCurrency(totalEarnings)
+        };
+
+        html += `
+      <div style="margin-top:16px; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; align-items:center;">
+        <span style="font-size:11px; color:var(--text-muted); margin-right:auto;">★ = custom rate per staff</span>
+        <button class="btn btn-outline" onclick="window.printSalaryReport()" style="font-size:13px; display:flex; align-items:center; gap:6px;">
+          🖨️ Print / Save PDF
+        </button>
+        <button class="btn btn-outline" onclick="window.downloadSalaryReportJPG()" style="font-size:13px; display:flex; align-items:center; gap:6px; color:#67e8f9; border-color:rgba(103,232,249,0.3);">
+          🖼️ Download JPG
+        </button>
+      </div>`;
+
         container.innerHTML = html;
     }
+
+    // ── Universal Canvas JPG Generator ──────────────────
+    function generateReportJPG(data) {
+        const canvas = document.createElement('canvas');
+        const width = 1100;
+        const rowHeight = 40;
+        const headerHeight = 150;
+        const tableHeaderHeight = 44;
+        const summaryHeight = data.totals && data.totals.length ? 100 : 0;
+        const footerHeight = 60;
+        const totalRows = (data.rows || []).length;
+
+        const totalHeight = Math.max(650, headerHeight + summaryHeight + tableHeaderHeight + (totalRows * rowHeight) + footerHeight + (data.totalRow ? rowHeight : 0) + 40);
+
+        canvas.width = width * 2;
+        canvas.height = totalHeight * 2;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(2, 2);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, totalHeight);
+
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, width, 10);
+
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 26px "Plus Jakarta Sans", sans-serif, Arial';
+        ctx.fillText(data.companyName || 'StaffSync', 40, 52);
+
+        ctx.fillStyle = '#2563eb';
+        ctx.font = 'bold 18px "Plus Jakarta Sans", sans-serif, Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText(data.docType || 'SALARY REPORT', width - 40, 52);
+        ctx.textAlign = 'left';
+
+        ctx.fillStyle = '#475569';
+        ctx.font = '14px Arial, sans-serif';
+        ctx.fillText(data.subtitle || '', 40, 82);
+
+        if (data.staffInfo) {
+            ctx.fillText(data.staffInfo, 40, 104);
+        }
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '12px Arial, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('Generated: ' + new Date().toLocaleString('en-GB'), width - 40, 82);
+        ctx.textAlign = 'left';
+
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(40, 118);
+        ctx.lineTo(width - 40, 118);
+        ctx.stroke();
+
+        let currentY = 136;
+
+        if (data.totals && data.totals.length > 0) {
+            ctx.fillStyle = '#f8fafc';
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 1;
+            roundRect(ctx, 40, currentY, width - 80, 70, 8, true, true);
+
+            const colWidth = (width - 80) / data.totals.length;
+            data.totals.forEach((t, idx) => {
+                const centerX = 40 + (idx * colWidth) + (colWidth / 2);
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#64748b';
+                ctx.font = '12px Arial, sans-serif';
+                ctx.fillText(t.label, centerX, currentY + 26);
+
+                ctx.fillStyle = t.color || '#0f172a';
+                ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif, Arial';
+                ctx.fillText(t.value, centerX, currentY + 54);
+            });
+            ctx.textAlign = 'left';
+            currentY += 90;
+        }
+
+        ctx.fillStyle = '#0f172a';
+        roundRect(ctx, 40, currentY, width - 80, tableHeaderHeight, 6, true, false);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 13px Arial, sans-serif';
+
+        const colCount = data.headers.length;
+        const colWidths = data.colWidths || getEqualColWidths(colCount, width - 80);
+
+        let startX = 40;
+        data.headers.forEach((h, i) => {
+            const cw = colWidths[i];
+            const align = (data.aligns && data.aligns[i]) || 'left';
+            ctx.textAlign = align;
+            let xPos = startX + 16;
+            if (align === 'center') xPos = startX + (cw / 2);
+            if (align === 'right') xPos = startX + cw - 16;
+
+            ctx.fillText(h, xPos, currentY + 27);
+            startX += cw;
+        });
+        ctx.textAlign = 'left';
+        currentY += tableHeaderHeight;
+
+        (data.rows || []).forEach((row, rowIndex) => {
+            if (rowIndex % 2 === 1) {
+                ctx.fillStyle = '#f8fafc';
+                ctx.fillRect(40, currentY, width - 80, rowHeight);
+            }
+
+            ctx.strokeStyle = '#f1f5f9';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(40, currentY + rowHeight);
+            ctx.lineTo(width - 40, currentY + rowHeight);
+            ctx.stroke();
+
+            ctx.font = '13px Arial, sans-serif';
+            let rowX = 40;
+            data.headers.forEach((h, colIndex) => {
+                const cw = colWidths[colIndex];
+                const align = (data.aligns && data.aligns[colIndex]) || 'left';
+                const cellVal = row[colIndex] !== undefined ? String(row[colIndex]) : '';
+
+                ctx.textAlign = align;
+                let xPos = rowX + 16;
+                if (align === 'center') xPos = rowX + (cw / 2);
+                if (align === 'right') xPos = rowX + cw - 16;
+
+                if (align === 'right' || cellVal.includes('£')) {
+                    ctx.fillStyle = '#16a34a';
+                    ctx.font = 'bold 13px Arial, sans-serif';
+                } else {
+                    ctx.fillStyle = '#1e293b';
+                    ctx.font = '13px Arial, sans-serif';
+                }
+
+                ctx.fillText(cellVal, xPos, currentY + 25);
+                rowX += cw;
+            });
+            currentY += rowHeight;
+        });
+
+        if (data.totalRow) {
+            ctx.fillStyle = '#f1f5f9';
+            ctx.fillRect(40, currentY, width - 80, rowHeight + 4);
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(40, currentY);
+            ctx.lineTo(width - 40, currentY);
+            ctx.stroke();
+
+            let rowX = 40;
+            data.headers.forEach((h, colIndex) => {
+                const cw = colWidths[colIndex];
+                const align = (data.aligns && data.aligns[colIndex]) || 'left';
+                const cellVal = data.totalRow[colIndex] !== undefined ? String(data.totalRow[colIndex]) : '';
+
+                ctx.textAlign = align;
+                let xPos = rowX + 16;
+                if (align === 'center') xPos = rowX + (cw / 2);
+                if (align === 'right') xPos = rowX + cw - 16;
+
+                ctx.fillStyle = '#0f172a';
+                ctx.font = 'bold 14px Arial, sans-serif';
+                ctx.fillText(cellVal, xPos, currentY + 27);
+                rowX += cw;
+            });
+            currentY += rowHeight + 4;
+        }
+
+        currentY = totalHeight - 35;
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(40, currentY - 10);
+        ctx.lineTo(width - 40, currentY - 10);
+        ctx.stroke();
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Arial, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('StaffSync Payroll System', 40, currentY + 8);
+        ctx.textAlign = 'right';
+        ctx.fillText('Page 1 of 1 • Confidential', width - 40, currentY + 8);
+        ctx.textAlign = 'left';
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        const link = document.createElement('a');
+        link.download = (data.filename || 'Salary_Report') + '.jpg';
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        if (typeof toast === 'function') toast('JPG downloaded 🖼️');
+    }
+
+    function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+        if (typeof radius === 'number') {
+            radius = { tl: radius, tr: radius, br: radius, bl: radius };
+        }
+        ctx.beginPath();
+        ctx.moveTo(x + radius.tl, y);
+        ctx.lineTo(x + width - radius.tr, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+        ctx.lineTo(x + width, y + height - radius.br);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+        ctx.lineTo(x + radius.bl, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+        ctx.lineTo(x, y + radius.tl);
+        ctx.quadraticCurveTo(x, y, x + radius.tl, y);
+        ctx.closePath();
+        if (fill) ctx.fill();
+        if (stroke) ctx.stroke();
+    }
+
+    function getEqualColWidths(count, totalWidth) {
+        const arr = [];
+        const w = totalWidth / count;
+        for (let i = 0; i < count; i++) arr.push(w);
+        return arr;
+    }
+
+    // ── Print Salary Report ──────────────────────────────
+    window.printSalaryReport = function () {
+        const rpt = window._lastSalaryReport;
+        if (!rpt || !rpt.rows || rpt.rows.length === 0) {
+            toast('No report data to print', 'error');
+            return;
+        }
+
+        const rowsHtml = rpt.rows.map(r => `
+            <tr>
+                <td>${r.name}</td>
+                <td>${r.hours}</td>
+                <td>${r.rate}</td>
+                <td style="text-align:right; font-weight:600; color:#16a34a;">${r.earnings}</td>
+            </tr>`).join('');
+
+        const win = window.open('', '_blank', 'width=740,height=600');
+        win.document.write(`<!DOCTYPE html><html><head>
+            <meta charset="UTF-8">
+            <title>${rpt.companyName} — Salary Report</title>
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { font-family: Arial, sans-serif; padding: 40px; color: #111; background: #fff; font-size: 14px; }
+                h1 { font-size: 22px; margin-bottom: 4px; color: #0f172a; }
+                .sub { color: #555; font-size: 13px; margin-bottom: 24px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                th { background: #0f172a; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+                td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; }
+                tr:last-child td { border-bottom: none; }
+                .total-row td { border-top: 2px solid #0f172a; font-weight: 700; background: #f8fafc; }
+                .footer { margin-top: 32px; font-size: 11px; color: #999; }
+                .note { font-size: 11px; color: #555; margin-top: 8px; }
+                @media print { button { display: none; } }
+            </style>
+        </head><body>
+            <h1>${rpt.companyName}</h1>
+            <div class="sub">Salary Report &nbsp;·&nbsp; ${rpt.dateFrom} to ${rpt.dateTo} &nbsp;·&nbsp; Filter: ${rpt.staffFilterName || 'All Staff'}</div>
+            <table>
+                <thead><tr>
+                    <th>Staff Member</th>
+                    <th>Total Hours</th>
+                    <th>Rate</th>
+                    <th style="text-align:right;">Earnings</th>
+                </tr></thead>
+                <tbody>${rowsHtml}</tbody>
+                <tfoot><tr class="total-row">
+                    <td colspan="3">Total</td>
+                    <td style="text-align:right;">${rpt.total}</td>
+                </tr></tfoot>
+            </table>
+            <p class="note">★ = custom hourly rate set per staff member</p>
+            <div class="footer">Generated by StaffSync &nbsp;·&nbsp; ${new Date().toLocaleString()}</div>
+            <br>
+            <button onclick="window.print()" style="padding:10px 24px; background:#0f172a; color:#fff; border:none; border-radius:6px; font-size:14px; cursor:pointer;">🖨️ Print / Save as PDF</button>
+            <script>setTimeout(() => window.print(), 600);<\/script>
+        </body></html>`);
+        win.document.close();
+    };
+
+    window.downloadSalaryReportJPG = function () {
+        const rpt = window._lastSalaryReport;
+        if (!rpt || !rpt.rows || rpt.rows.length === 0) {
+            toast('No report data to download', 'error');
+            return;
+        }
+
+        generateReportJPG({
+            companyName: rpt.companyName,
+            docType: 'SALARY & PAYROLL REPORT',
+            subtitle: 'Period: ' + rpt.dateFrom + ' to ' + rpt.dateTo,
+            staffInfo: 'Filter: ' + (rpt.staffFilterName || 'All Staff'),
+            headers: ['Staff Member', 'Total Hours', 'Rate', 'Total Earnings'],
+            colWidths: [300, 200, 240, 240],
+            aligns: ['left', 'center', 'center', 'right'],
+            rows: rpt.rows.map(r => [r.name, r.hours, r.rate, r.earnings]),
+            totalRow: ['Total', '', '', rpt.total],
+            totals: [
+                { label: 'Total Earnings', value: rpt.total, color: '#16a34a' }
+            ],
+            filename: 'Salary_Report_' + rpt.dateFrom + '_to_' + rpt.dateTo
+        });
+    };
 
     // ── Staff Attendance Detail (from Salary) ────────────
     window.showStaffAttendanceDetail = async function (encodedCtx) {
         const ctx = JSON.parse(decodeURIComponent(encodedCtx));
-        const { userId, userName, dateFrom, dateTo, rate } = ctx;
+        const { userId, userName, companyName, dateFrom, dateTo, rate } = ctx;
 
         const modal = $('#modal-staff-attendance-detail');
         const titleEl = $('#modal-staff-detail-title');
@@ -1194,6 +1590,31 @@
         hoursEl.textContent = formatHours(totalMs);
         payEl.textContent = formatCurrency(totalPay);
         sessEl.textContent = (entries || []).length;
+
+        const formattedSessions = (entries || []).map(e => {
+            const dur = new Date(e.clock_out) - new Date(e.clock_in);
+            const pay = (dur / 3600000) * Number(rate);
+            return {
+                date: new Date(e.clock_in).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+                branch: e.branch || '—',
+                clockIn: formatTime(e.clock_in),
+                clockOut: formatTime(e.clock_out),
+                duration: formatHours(dur),
+                pay: formatCurrency(pay)
+            };
+        });
+
+        window._lastStaffDetailReport = {
+            companyName: companyName || (window._lastSalaryReport ? window._lastSalaryReport.companyName : 'Company'),
+            userName: userName,
+            dateFrom: dateFrom,
+            dateTo: dateTo,
+            rate: Number(rate),
+            totalHours: formatHours(totalMs),
+            totalPay: formatCurrency(totalPay),
+            totalSessions: (entries || []).length,
+            sessions: formattedSessions
+        };
 
         if (!entries || entries.length === 0) {
             listEl.innerHTML = '<p class="empty-state" style="padding:20px 0;">No sessions in this date range</p>';
@@ -1230,6 +1651,119 @@
         }).join('')}
             </tbody>
           </table>`;
+    };
+
+    window.printStaffDetailReport = function () {
+        const rpt = window._lastStaffDetailReport;
+        if (!rpt || !rpt.sessions || rpt.sessions.length === 0) {
+            toast('No report data to print', 'error');
+            return;
+        }
+
+        const rowsHtml = rpt.sessions.map(s => `
+            <tr>
+                <td>${s.date}</td>
+                <td>${s.branch}</td>
+                <td>${s.clockIn}</td>
+                <td>${s.clockOut}</td>
+                <td>${s.duration}</td>
+                <td style="text-align:right; font-weight:600; color:#16a34a;">${s.pay}</td>
+            </tr>`).join('');
+
+        const win = window.open('', '_blank', 'width=780,height=650');
+        win.document.write(`<!DOCTYPE html><html><head>
+            <meta charset="UTF-8">
+            <title>${rpt.companyName} — ${rpt.userName} Salary Report</title>
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { font-family: Arial, sans-serif; padding: 40px; color: #111; background: #fff; font-size: 13px; }
+                .header-flex { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+                h1 { font-size: 22px; color: #0f172a; margin-bottom: 4px; }
+                .subtitle { font-size: 14px; font-weight: 600; color: #2563eb; }
+                .sub-meta { color: #555; font-size: 12px; margin-top: 4px; }
+                .summary-box { display: flex; gap: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px 20px; border-radius: 8px; margin-bottom: 24px; }
+                .summary-item { flex: 1; text-align: center; }
+                .summary-val { font-size: 18px; font-weight: 700; color: #0f172a; }
+                .summary-val.pay { color: #16a34a; }
+                .summary-lbl { font-size: 11px; color: #64748b; text-transform: uppercase; margin-top: 2px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                th { background: #0f172a; color: #fff; padding: 10px 12px; text-align: left; font-size: 12px; }
+                td { padding: 9px 12px; border-bottom: 1px solid #e5e7eb; }
+                tr:last-child td { border-bottom: none; }
+                .footer { margin-top: 32px; font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+                @media print { .no-print { display: none; } }
+            </style>
+        </head><body>
+            <div class="header-flex">
+                <div>
+                    <h1>${rpt.companyName}</h1>
+                    <div class="subtitle">STAFF SALARY & ATTENDANCE REPORT</div>
+                    <div class="sub-meta">Staff Member: <strong>${rpt.userName}</strong> &nbsp;·&nbsp; Rate: £${rpt.rate.toFixed(2)}/hr</div>
+                    <div class="sub-meta">Period: ${rpt.dateFrom} to ${rpt.dateTo}</div>
+                </div>
+            </div>
+
+            <div class="summary-box">
+                <div class="summary-item">
+                    <div class="summary-val">${rpt.totalHours}</div>
+                    <div class="summary-lbl">Total Hours</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-val">${rpt.totalSessions}</div>
+                    <div class="summary-lbl">Total Sessions</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-val pay">${rpt.totalPay}</div>
+                    <div class="summary-lbl">Total Pay</div>
+                </div>
+            </div>
+
+            <table>
+                <thead><tr>
+                    <th>Date</th>
+                    <th>Branch</th>
+                    <th>Clock In</th>
+                    <th>Clock Out</th>
+                    <th>Duration</th>
+                    <th style="text-align:right;">Pay</th>
+                </tr></thead>
+                <tbody>${rowsHtml}</tbody>
+            </table>
+
+            <div class="footer">
+                <span>Generated by StaffSync Payroll System</span>
+                <span>Date: ${new Date().toLocaleString()}</span>
+            </div>
+            <br class="no-print">
+            <button class="no-print" onclick="window.print()" style="padding:10px 24px; background:#0f172a; color:#fff; border:none; border-radius:6px; font-size:14px; cursor:pointer;">🖨️ Print / Save as PDF</button>
+            <script>setTimeout(() => window.print(), 600);<\/script>
+        </body></html>`);
+        win.document.close();
+    };
+
+    window.downloadStaffDetailJPG = function () {
+        const rpt = window._lastStaffDetailReport;
+        if (!rpt || !rpt.sessions || rpt.sessions.length === 0) {
+            toast('No report data to download', 'error');
+            return;
+        }
+
+        generateReportJPG({
+            companyName: rpt.companyName,
+            docType: 'STAFF SALARY REPORT',
+            subtitle: 'Period: ' + rpt.dateFrom + ' to ' + rpt.dateTo,
+            staffInfo: 'Staff Member: ' + rpt.userName + ' (Rate: £' + Number(rpt.rate).toFixed(2) + '/hr)',
+            headers: ['Date', 'Branch', 'Clock In', 'Clock Out', 'Duration', 'Pay'],
+            colWidths: [170, 170, 160, 160, 180, 180],
+            aligns: ['left', 'left', 'center', 'center', 'center', 'right'],
+            rows: rpt.sessions.map(s => [s.date, s.branch, s.clockIn, s.clockOut, s.duration, s.pay]),
+            totals: [
+                { label: 'Total Hours', value: rpt.totalHours, color: '#2563eb' },
+                { label: 'Total Sessions', value: rpt.totalSessions, color: '#0f172a' },
+                { label: 'Total Pay', value: rpt.totalPay, color: '#16a34a' }
+            ],
+            filename: 'Salary_Report_' + rpt.userName.replace(/\s+/g, '_')
+        });
     };
 
     // ── Company Settings ────────────────────────────────
@@ -1939,12 +2473,17 @@
 
         const { data: hist } = await histQuery;
 
+        const completedHist = (hist || []).filter(e => e.clock_out);
+        const staffRate = (user.hourly_rate != null && Number(user.hourly_rate) > 0)
+            ? Number(user.hourly_rate)
+            : (company ? Number(company.hourly_rate) : 0);
+
+        const totalMs = completedHist.reduce((s, e) => s + (new Date(e.clock_out) - new Date(e.clock_in)), 0);
+        const totalPay = (totalMs / 3600000) * staffRate;
+
         // Filtered totals summary card
         const summaryEl = $('#hours-filter-summary');
         if (isFiltered && summaryEl) {
-            const completedHist = (hist || []).filter(e => e.clock_out);
-            const totalMs = completedHist.reduce((s, e) => s + (new Date(e.clock_out) - new Date(e.clock_in)), 0);
-            const totalPay = (totalMs / 3600000) * rate;
             $('#filter-total-hours').textContent = formatHours(totalMs);
             $('#filter-total-pay').textContent = formatCurrency(totalPay);
             $('#filter-total-sessions').textContent = completedHist.length;
@@ -1952,6 +2491,33 @@
         } else if (summaryEl) {
             summaryEl.style.display = 'none';
         }
+
+        const fromStr = isFiltered ? filterFrom : (hist && hist.length > 0 ? new Date(hist[hist.length - 1].clock_in).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+        const toStr = isFiltered ? filterTo : new Date().toISOString().split('T')[0];
+
+        window._lastStaffMySalaryReport = {
+            companyName: company ? company.name : 'Company',
+            userName: user.name,
+            userEmail: user.email,
+            dateFrom: fromStr,
+            dateTo: toStr,
+            rate: staffRate,
+            totalHours: formatHours(totalMs),
+            totalPay: formatCurrency(totalPay),
+            totalSessions: completedHist.length,
+            sessions: completedHist.map(e => {
+                const dur = new Date(e.clock_out) - new Date(e.clock_in);
+                const pay = (dur / 3600000) * staffRate;
+                return {
+                    date: new Date(e.clock_in).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+                    branch: e.branch || '—',
+                    clockIn: formatTime(e.clock_in),
+                    clockOut: formatTime(e.clock_out),
+                    duration: formatHours(dur),
+                    pay: formatCurrency(pay)
+                };
+            })
+        };
 
         // Render history list
         const histContainer = $('#hours-history-list');
@@ -1966,7 +2532,7 @@
             const dur = e.clock_out
                 ? new Date(e.clock_out) - new Date(e.clock_in)
                 : new Date() - new Date(e.clock_in);
-            const pay = e.clock_out ? formatCurrency((dur / 3600000) * rate) : null;
+            const pay = e.clock_out ? formatCurrency((dur / 3600000) * staffRate) : null;
             const day = new Date(e.clock_in).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
             const autoBadge = e.auto_clocked_out ? '<span class="auto-badge">⚠️ Auto</span>' : '';
             const bBadge = e.branch ? `<span class="branch-badge">${e.branch}</span>` : '';
@@ -1982,7 +2548,9 @@
     async function renderEarningsSummary(user, company) {
         if (!company) return;
         const now = new Date();
-        const rate = Number(company.hourly_rate);
+        const rate = (user.hourly_rate != null && Number(user.hourly_rate) > 0)
+            ? Number(user.hourly_rate)
+            : Number(company.hourly_rate);
 
         const { data: entries } = await sb
             .from('time_entries')
@@ -2001,6 +2569,119 @@
         $('#stat-month-earnings').textContent = formatCurrency((monthMs / 3600000) * rate);
         $('#staff-hourly-rate').textContent = formatCurrency(rate) + '/hr';
     }
+
+    window.printStaffMySalaryReport = function () {
+        const rpt = window._lastStaffMySalaryReport;
+        if (!rpt || !rpt.sessions || rpt.sessions.length === 0) {
+            toast('No salary history data to print', 'error');
+            return;
+        }
+
+        const rowsHtml = rpt.sessions.map(s => `
+            <tr>
+                <td>${s.date}</td>
+                <td>${s.branch}</td>
+                <td>${s.clockIn}</td>
+                <td>${s.clockOut}</td>
+                <td>${s.duration}</td>
+                <td style="text-align:right; font-weight:600; color:#16a34a;">${s.pay}</td>
+            </tr>`).join('');
+
+        const win = window.open('', '_blank', 'width=780,height=650');
+        win.document.write(`<!DOCTYPE html><html><head>
+            <meta charset="UTF-8">
+            <title>${rpt.companyName} — My Salary Report</title>
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { font-family: Arial, sans-serif; padding: 40px; color: #111; background: #fff; font-size: 13px; }
+                .header-flex { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+                h1 { font-size: 22px; color: #0f172a; margin-bottom: 4px; }
+                .subtitle { font-size: 14px; font-weight: 600; color: #2563eb; }
+                .sub-meta { color: #555; font-size: 12px; margin-top: 4px; }
+                .summary-box { display: flex; gap: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px 20px; border-radius: 8px; margin-bottom: 24px; }
+                .summary-item { flex: 1; text-align: center; }
+                .summary-val { font-size: 18px; font-weight: 700; color: #0f172a; }
+                .summary-val.pay { color: #16a34a; }
+                .summary-lbl { font-size: 11px; color: #64748b; text-transform: uppercase; margin-top: 2px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                th { background: #0f172a; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+                td { padding: 9px 12px; border-bottom: 1px solid #e5e7eb; }
+                tr:last-child td { border-bottom: none; }
+                .footer { margin-top: 32px; font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+                @media print { .no-print { display: none; } }
+            </style>
+        </head><body>
+            <div class="header-flex">
+                <div>
+                    <h1>${rpt.companyName}</h1>
+                    <div class="subtitle">PERSONAL SALARY REPORT</div>
+                    <div class="sub-meta">Staff: <strong>${rpt.userName}</strong> (${rpt.userEmail})</div>
+                    <div class="sub-meta">Period: ${rpt.dateFrom} to ${rpt.dateTo}</div>
+                </div>
+            </div>
+
+            <div class="summary-box">
+                <div class="summary-item">
+                    <div class="summary-val">${rpt.totalHours}</div>
+                    <div class="summary-lbl">Total Hours</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-val">${rpt.totalSessions}</div>
+                    <div class="summary-lbl">Total Sessions</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-val pay">${rpt.totalPay}</div>
+                    <div class="summary-lbl">Total Earnings</div>
+                </div>
+            </div>
+
+            <table>
+                <thead><tr>
+                    <th>Date</th>
+                    <th>Branch</th>
+                    <th>Clock In</th>
+                    <th>Clock Out</th>
+                    <th>Duration</th>
+                    <th style="text-align:right;">Pay</th>
+                </tr></thead>
+                <tbody>${rowsHtml}</tbody>
+            </table>
+
+            <div class="footer">
+                <span>Generated by StaffSync</span>
+                <span>Date: ${new Date().toLocaleString()}</span>
+            </div>
+            <br class="no-print">
+            <button class="no-print" onclick="window.print()" style="padding:10px 24px; background:#0f172a; color:#fff; border:none; border-radius:6px; font-size:14px; cursor:pointer;">🖨️ Print / Save as PDF</button>
+            <script>setTimeout(() => window.print(), 600);<\/script>
+        </body></html>`);
+        win.document.close();
+    };
+
+    window.downloadStaffMySalaryJPG = function () {
+        const rpt = window._lastStaffMySalaryReport;
+        if (!rpt || !rpt.sessions || rpt.sessions.length === 0) {
+            toast('No salary history data to download', 'error');
+            return;
+        }
+
+        generateReportJPG({
+            companyName: rpt.companyName,
+            docType: 'PERSONAL SALARY REPORT',
+            subtitle: 'Period: ' + rpt.dateFrom + ' to ' + rpt.dateTo,
+            staffInfo: 'Staff: ' + rpt.userName + ' (' + rpt.userEmail + ')',
+            headers: ['Date', 'Branch', 'Clock In', 'Clock Out', 'Duration', 'Pay'],
+            colWidths: [170, 170, 160, 160, 180, 180],
+            aligns: ['left', 'left', 'center', 'center', 'center', 'right'],
+            rows: rpt.sessions.map(s => [s.date, s.branch, s.clockIn, s.clockOut, s.duration, s.pay]),
+            totals: [
+                { label: 'Total Hours', value: rpt.totalHours, color: '#2563eb' },
+                { label: 'Total Sessions', value: rpt.totalSessions, color: '#0f172a' },
+                { label: 'Total Earnings', value: rpt.totalPay, color: '#16a34a' }
+            ],
+            filename: 'My_Salary_Report_' + rpt.userName.replace(/\s+/g, '_')
+        });
+    };
 
     // ─────────────────────────────────────────────────────
     // STAFF: VIEW TASKS

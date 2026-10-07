@@ -844,7 +844,17 @@
                     </div>
 
                     <div class="card glass" id="hours-history">
-                        <h3>History</h3>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+                            <h3 style="margin:0;">Attendance & Earnings History</h3>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-outline btn-sm" onclick="window.printStaffMySalaryReport()" style="font-size:12px; display:flex; align-items:center; gap:6px;">
+                                    🖨️ Print / Save PDF
+                                </button>
+                                <button class="btn btn-outline btn-sm" onclick="window.downloadStaffMySalaryJPG()" style="font-size:12px; display:flex; align-items:center; gap:6px; color:#67e8f9; border-color:rgba(103,232,249,0.3);">
+                                    🖼️ Download JPG
+                                </button>
+                            </div>
+                        </div>
                         <div id="hours-history-list">
                             <p class="empty-state">No history yet</p>
                         </div>
@@ -872,6 +882,20 @@
                             <span>Your Hourly Rate:</span>
                             <span class="rate-value" id="staff-hourly-rate">£0.00/hr</span>
                         </div>
+                    </div>
+                    <div class="card glass" style="margin-top:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+                            <h3 style="margin:0;">💷 My Salary Report</h3>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-outline btn-sm" onclick="window.printStaffMySalaryReport()" style="font-size:12px; display:flex; align-items:center; gap:6px;">
+                                    🖨️ Print / Save PDF
+                                </button>
+                                <button class="btn btn-outline btn-sm" onclick="window.downloadStaffMySalaryJPG()" style="font-size:12px; display:flex; align-items:center; gap:6px; color:#67e8f9; border-color:rgba(103,232,249,0.3);">
+                                    🖼️ Download JPG
+                                </button>
+                            </div>
+                        </div>
+                        <p style="font-size:13px; color:var(--text-muted); line-height:1.5;">Print or download your official attendance and salary report as a PDF document or JPG image.</p>
                     </div>
                 </div>
 
@@ -1049,7 +1073,15 @@
                         <p class="empty-state">No records found</p>
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn btn-outline btn-sm" onclick="window.printStaffDetailReport()" style="font-size:12px; display:flex; align-items:center; gap:6px;">
+                            🖨️ Print / Save PDF
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="window.downloadStaffDetailJPG()" style="font-size:12px; display:flex; align-items:center; gap:6px; color:#67e8f9; border-color:rgba(103,232,249,0.3);">
+                            🖼️ Download JPG
+                        </button>
+                    </div>
                     <button class="btn btn-outline" id="btn-close-staff-detail-footer">Close</button>
                 </div>
             </div>
