@@ -859,7 +859,7 @@
         await renderOwnerSubmissions(company);
         await renderOwnerAttendance(company);
         await renderBranchesSettings(company);
-        await renderOwnerQRCodes(company);
+        await renderOwnerQRAndNFC(company);
 
         // Auto-refresh active staffs every 60 seconds
         if (window._activeStaffsInterval) clearInterval(window._activeStaffsInterval);
@@ -2282,18 +2282,24 @@
         const status = $('#clock-status');
         const qrBtn = $('#btn-open-qr-scanner');
         const qrSub = $('#qr-btn-status');
+        const nfcBtn = $('#btn-tap-nfc');
+        const nfcSub = $('#nfc-btn-status');
 
         if (isClockedIn) {
             status.textContent = '🟢 Currently clocked in';
             status.style.color = 'var(--green)';
             if (qrBtn) qrBtn.classList.add('clocked-in');
             if (qrSub) qrSub.textContent = 'Scan QR code to Clock Out';
+            if (nfcBtn) nfcBtn.classList.add('clocked-in');
+            if (nfcSub) nfcSub.textContent = 'Tap NFC tag to Clock Out';
         } else {
             status.textContent = 'Not clocked in';
             status.style.color = 'var(--text-muted)';
             $('#clock-elapsed').textContent = '';
             if (qrBtn) qrBtn.classList.remove('clocked-in');
             if (qrSub) qrSub.textContent = 'Point camera at your branch QR code';
+            if (nfcBtn) nfcBtn.classList.remove('clocked-in');
+            if (nfcSub) nfcSub.textContent = 'Hold phone near branch NFC tag';
         }
     }
 
@@ -3478,49 +3484,157 @@
     }
 
     // ─────────────────────────────────────────────────────
-    // QR CODE GENERATION (Owner)
+    // CONTACTLESS CLOCK IN / OUT HUB: QR & NFC (Owner)
     // ─────────────────────────────────────────────────────
-    async function renderOwnerQRCodes(company) {
-        const container = $('#qr-codes-container');
-        if (!container) return;
-        container.innerHTML = '';
+    async function renderOwnerQRAndNFC(company) {
+        const qrContainer = $('#qr-codes-container');
+        const nfcContainer = $('#nfc-tags-container');
+        if (!qrContainer && !nfcContainer) return;
+
+        if (qrContainer) qrContainer.innerHTML = '';
+        if (nfcContainer) nfcContainer.innerHTML = '';
 
         const BASE_URL = window.location.origin + window.location.pathname;
         const branches = (company.branches && company.branches.length > 0)
             ? company.branches
-            : ['Main'];   // If no branches, generate one QR for the whole company
+            : ['Main'];   // If no branches, generate one for the main branch
 
         branches.forEach(branch => {
-            // Encode: base URL + params that the scanner will parse
-            const qrData = `${BASE_URL}?qr=1&cid=${encodeURIComponent(company.id)}&b=${encodeURIComponent(branch)}`;
+            const encodedCid = encodeURIComponent(company.id);
+            const encodedBranch = encodeURIComponent(branch);
+            const qrData = `${BASE_URL}?qr=1&cid=${encodedCid}&b=${encodedBranch}`;
+            const nfcUrl = `${BASE_URL}?nfc=1&cid=${encodedCid}&b=${encodedBranch}`;
 
-            const card = document.createElement('div');
-            card.className = 'card glass';
-            card.style.cssText = 'padding:20px; text-align:center; min-width:200px; flex:1; max-width:280px;';
-            card.innerHTML = `
-                <h4 style="margin-bottom:4px;">${branch === 'Main' ? '🏢 Main' : '📍 ' + branch}</h4>
-                <p style="color:var(--text-secondary); font-size:11px; margin-bottom:12px;">${company.name}</p>
-                <div id="qr-${branch.replace(/\s+/g, '_')}" style="background:white; padding:10px; border-radius:8px; display:inline-block;"></div>
-                <p style="color:var(--text-muted); font-size:10px; margin-top:8px; word-break:break-all;">${company.code || ''}</p>
-                <button class="btn btn-outline" onclick="window.printQR('${branch.replace(/'/g, "\\'")}', '${company.name.replace(/'/g, "\\'")}', '${qrData.replace(/'/g, "\\'")}' )" style="margin-top:12px; width:100%; font-size:12px;">🖨️ Print</button>
-            `;
-            container.appendChild(card);
+            // 1. NFC Tag Card
+            if (nfcContainer) {
+                const nfcCard = document.createElement('div');
+                nfcCard.className = 'nfc-branch-card';
+                nfcCard.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <h4 style="margin:0; font-size:15px; color:#f8f6f0;">${branch === 'Main' ? '🏢 Main Branch' : '📍 ' + branch}</h4>
+                            <span style="font-size:11px; color:var(--text-muted);">${company.name}</span>
+                        </div>
+                        <span class="badge" style="background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-size:11px;">📡 NFC Ready</span>
+                    </div>
 
-            // Generate QR
-            const qrEl = card.querySelector(`#qr-${branch.replace(/\s+/g, '_')}`);
-            if (qrEl && window.QRCode) {
-                new window.QRCode(qrEl, {
-                    text: qrData,
-                    width: 160,
-                    height: 160,
-                    colorDark: '#0f172a',
-                    colorLight: '#ffffff',
-                    correctLevel: window.QRCode.CorrectLevel.H
-                });
+                    <div class="nfc-url-box">
+                        <span style="font-size:14px;">🔗</span>
+                        <input type="text" class="nfc-url-input" value="${nfcUrl}" readonly id="nfc-input-${branch.replace(/\s+/g, '_')}">
+                    </div>
+
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:2px;">
+                        <button type="button" class="btn btn-sm btn-primary" onclick="window.copyNFCLink('${nfcUrl.replace(/'/g, "\\'")}')" style="flex:1; min-width:140px;">
+                            📋 Copy NFC Link
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline" onclick="window.writeNFCTag('${nfcUrl.replace(/'/g, "\\'")}', '${branch.replace(/'/g, "\\'")}')" style="flex:1; min-width:140px; border-color:rgba(56,189,248,0.4); color:#38bdf8;">
+                            ✍️ Write to Tag
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline" onclick="window.testNFCTap('${nfcUrl.replace(/'/g, "\\'")}')" style="min-width:100px;">
+                            ⚡ Test Tap
+                        </button>
+                    </div>
+                `;
+                nfcContainer.appendChild(nfcCard);
+            }
+
+            // 2. QR Code Card
+            if (qrContainer) {
+                const qrCard = document.createElement('div');
+                qrCard.className = 'card glass';
+                qrCard.style.cssText = 'padding:20px; text-align:center; min-width:200px; flex:1; max-width:280px;';
+                qrCard.innerHTML = `
+                    <h4 style="margin-bottom:4px;">${branch === 'Main' ? '🏢 Main' : '📍 ' + branch}</h4>
+                    <p style="color:var(--text-secondary); font-size:11px; margin-bottom:12px;">${company.name}</p>
+                    <div id="qr-${branch.replace(/\s+/g, '_')}" style="background:white; padding:10px; border-radius:8px; display:inline-block;"></div>
+                    <p style="color:var(--text-muted); font-size:10px; margin-top:8px; word-break:break-all;">${company.code || ''}</p>
+                    <button class="btn btn-outline" onclick="window.printQR('${branch.replace(/'/g, "\\'")}', '${company.name.replace(/'/g, "\\'")}', '${qrData.replace(/'/g, "\\'")}' )" style="margin-top:12px; width:100%; font-size:12px;">🖨️ Print QR</button>
+                `;
+                qrContainer.appendChild(qrCard);
+
+                // Generate QR
+                const qrEl = qrCard.querySelector(`#qr-${branch.replace(/\s+/g, '_')}`);
+                if (qrEl && window.QRCode) {
+                    new window.QRCode(qrEl, {
+                        text: qrData,
+                        width: 160,
+                        height: 160,
+                        colorDark: '#0f172a',
+                        colorLight: '#ffffff',
+                        correctLevel: window.QRCode.CorrectLevel.H
+                    });
+                }
             }
         });
     }
 
+    // Backward compatibility alias
+    async function renderOwnerQRCodes(company) {
+        await renderOwnerQRAndNFC(company);
+    }
+
+    // Copy NFC Link
+    window.copyNFCLink = async function (url) {
+        try {
+            await navigator.clipboard.writeText(url);
+            if (navigator.vibrate) navigator.vibrate(50);
+            toast('✅ NFC Link copied to clipboard! Ready to write to NFC tag.');
+        } catch (e) {
+            const temp = document.createElement('input');
+            temp.value = url;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+            toast('✅ NFC Link copied!');
+        }
+    };
+
+    // Test NFC Tap
+    window.testNFCTap = async function (url) {
+        toast('📡 Simulating NFC tap…');
+        setTimeout(() => handleClockAction(url, 'nfc'), 400);
+    };
+
+    // Write to Physical NFC Tag (using Web NFC NDEFReader if available)
+    window.writeNFCTag = async function (nfcUrl, branchName) {
+        if (!('NDEFReader' in window)) {
+            // Web NFC is not available (e.g. desktop, iOS Safari, etc.)
+            // Open the setup guide to show 3-step setup via free NFC Tools app
+            openNFCGuideModal();
+            toast('ℹ️ Follow the guide to write this link via free NFC Tools app or Chrome on Android', 'info');
+            return;
+        }
+
+        const modal = $('#modal-nfc-write');
+        const branchEl = $('#nfc-write-branch-name');
+        const statusEl = $('#nfc-write-status-text');
+
+        if (branchEl) branchEl.textContent = branchName;
+        if (statusEl) statusEl.textContent = 'Hold NFC tag to the back of this phone…';
+        if (modal) modal.style.display = 'flex';
+
+        try {
+            const ndef = new window.NDEFReader();
+            await ndef.write({
+                records: [
+                    { recordType: 'url', data: nfcUrl }
+                ]
+            });
+            if (modal) modal.style.display = 'none';
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            toast(`🎉 NFC Tag successfully programmed for branch: ${branchName}!`);
+        } catch (err) {
+            if (statusEl) statusEl.textContent = '⚠️ ' + (err.message || 'Write failed');
+            console.error('NFC write error:', err);
+            setTimeout(() => {
+                if (modal) modal.style.display = 'none';
+            }, 3000);
+            toast('⚠️ Failed to write to NFC tag: ' + (err.message || 'Error'), 'error');
+        }
+    };
+
+    // Print QR
     window.printQR = function (branch, companyName, qrData) {
         const win = window.open('', '_blank', 'width=400,height=500');
         win.document.write(`
@@ -3555,6 +3669,116 @@
     };
 
     // ─────────────────────────────────────────────────────
+    // NFC SCANNER & TAP LISTENER (Staff)
+    // ─────────────────────────────────────────────────────
+    let _activeNdef = null;
+    let _ndefController = null;
+
+    async function openNFCScanner() {
+        if (!('NDEFReader' in window)) {
+            // Web NFC is not exposed by this browser (e.g. iOS Safari)
+            // On iPhone, NFC background tag reading works natively without Web NFC!
+            openNFCGuideModal();
+            toast('💡 iOS handles NFC tags automatically—just touch your phone to the physical tag!', 'info');
+            return;
+        }
+
+        const modal = $('#modal-nfc-scanner');
+        if (modal) modal.style.display = 'flex';
+        const statusEl = $('#nfc-scan-status-text');
+        if (statusEl) statusEl.textContent = 'Hold top or back of phone against NFC tag…';
+
+        try {
+            if (_ndefController) {
+                try { _ndefController.abort(); } catch (e) {}
+            }
+            _ndefController = new AbortController();
+            const ndef = new window.NDEFReader();
+            _activeNdef = ndef;
+
+            await ndef.scan({ signal: _ndefController.signal });
+
+            ndef.onreading = async (event) => {
+                if (modal) modal.style.display = 'none';
+                if (_ndefController) {
+                    try { _ndefController.abort(); } catch (e) {}
+                }
+
+                let targetUrl = '';
+                for (const record of event.message.records) {
+                    if (record.recordType === 'url') {
+                        const decoder = new TextDecoder();
+                        targetUrl = decoder.decode(record.data);
+                        break;
+                    } else if (record.recordType === 'text') {
+                        const decoder = new TextDecoder();
+                        targetUrl = decoder.decode(record.data);
+                        break;
+                    }
+                }
+
+                if (targetUrl) {
+                    await handleClockAction(targetUrl, 'nfc');
+                } else {
+                    toast('⚠️ NFC tag did not contain a valid URL', 'error');
+                }
+            };
+
+            ndef.onreadingerror = () => {
+                if (statusEl) statusEl.textContent = '⚠️ Tag read error. Please hold closer.';
+            };
+        } catch (err) {
+            console.error('NFC scan initialization error:', err);
+            if (statusEl) statusEl.textContent = '⚠️ ' + (err.message || 'NFC unavailable');
+            setTimeout(() => {
+                if (modal) modal.style.display = 'none';
+            }, 2500);
+            toast('⚠️ NFC Scan Error: ' + (err.message || 'Device NFC unavailable'), 'error');
+        }
+    }
+
+    function closeNFCScanner() {
+        const modal = $('#modal-nfc-scanner');
+        if (modal) modal.style.display = 'none';
+        if (_ndefController) {
+            try { _ndefController.abort(); } catch (e) {}
+            _ndefController = null;
+        }
+    }
+
+    function openNFCGuideModal() {
+        const modal = $('#modal-nfc-guide');
+        if (modal) modal.style.display = 'flex';
+    }
+
+    function closeNFCGuideModal() {
+        const modal = $('#modal-nfc-guide');
+        if (modal) modal.style.display = 'none';
+    }
+
+    // Attach NFC modal buttons
+    const btnTapNFC = $('#btn-tap-nfc');
+    if (btnTapNFC) btnTapNFC.addEventListener('click', openNFCScanner);
+
+    const btnCloseNFCScan = $('#btn-close-nfc-scanner');
+    if (btnCloseNFCScan) btnCloseNFCScan.addEventListener('click', closeNFCScanner);
+
+    const btnCloseNFCWrite = $('#btn-close-nfc-write');
+    if (btnCloseNFCWrite) btnCloseNFCWrite.addEventListener('click', () => {
+        const modal = $('#modal-nfc-write');
+        if (modal) modal.style.display = 'none';
+    });
+
+    const btnOpenNFCGuide = $('#btn-open-nfc-guide');
+    if (btnOpenNFCGuide) btnOpenNFCGuide.addEventListener('click', openNFCGuideModal);
+
+    const btnCloseNFCGuide = $('#btn-close-nfc-guide');
+    if (btnCloseNFCGuide) btnCloseNFCGuide.addEventListener('click', closeNFCGuideModal);
+
+    const btnCloseNFCGuideBtn = $('#btn-close-nfc-guide-btn');
+    if (btnCloseNFCGuideBtn) btnCloseNFCGuideBtn.addEventListener('click', closeNFCGuideModal);
+
+    // ─────────────────────────────────────────────────────
     // QR CODE SCANNER (Staff)
     // ─────────────────────────────────────────────────────
     let _qrScanner = null;
@@ -3579,9 +3803,9 @@
                 try { await _qrScanner.stop(); } catch (e) { }
                 modal.style.display = 'none';
                 statusEl.textContent = '';
-                await handleQRClockAction(decodedText);
+                await handleClockAction(decodedText, 'qr');
             },
-            (err) => { /* scanning in progress - ignore frame errors */ }
+            (err) => { /* scanning in progress */ }
         ).then(() => {
             statusEl.textContent = 'Camera ready — aim at QR code';
         }).catch(err => {
@@ -3599,27 +3823,61 @@
         }
     }
 
-    async function handleQRClockAction(qrText) {
-        // Parse QR URL params
+    // ─────────────────────────────────────────────────────
+    // UNIFIED CLOCK ACTION: NFC & QR
+    // ─────────────────────────────────────────────────────
+    async function handleClockAction(targetText, source = 'nfc') {
         let cid, branch;
         try {
-            const url = new URL(qrText);
+            const url = new URL(targetText);
             cid = url.searchParams.get('cid');
             branch = url.searchParams.get('b');
+            if (url.searchParams.get('qr') === '1') source = 'qr';
+            if (url.searchParams.get('nfc') === '1') source = 'nfc';
         } catch (e) {
-            toast('Invalid QR code', 'error');
+            // Not a full URL - try parsing query string directly
+            try {
+                const params = new URLSearchParams(targetText.includes('?') ? targetText.split('?')[1] : targetText);
+                cid = params.get('cid');
+                branch = params.get('b');
+                if (params.get('qr') === '1') source = 'qr';
+                if (params.get('nfc') === '1') source = 'nfc';
+            } catch (err2) {
+                toast(`Invalid ${source.toUpperCase()} code`, 'error');
+                return;
+            }
+        }
+
+        if (!cid) { toast(`Invalid ${source.toUpperCase()} tag`, 'error'); return; }
+
+        const session = getSession();
+        if (!session) {
+            // Save pending action and prompt sign in
+            sessionStorage.setItem('pending_clock_cid', cid);
+            sessionStorage.setItem('pending_clock_branch', branch || '');
+            sessionStorage.setItem('pending_clock_method', source);
+            showClockPendingBanner(branch, source);
+            showView('view-login');
+            toast(`📡 ${source.toUpperCase()} detected! Please sign in to confirm clock in/out.`, 'info');
             return;
         }
 
-        if (!cid) { toast('Invalid QR code', 'error'); return; }
-
-        const session = getSession();
-        if (!session) { toast('Please log in first', 'error'); return; }
-
         // Verify staff belongs to this company
         if (session.company_id !== cid) {
-            toast('⚠️ This QR code belongs to a different company', 'error');
+            toast(`⚠️ This ${source.toUpperCase()} tag belongs to a different company`, 'error');
             return;
+        }
+
+        // Play haptic feedback
+        if (navigator.vibrate) {
+            navigator.vibrate([100, 50, 100]);
+        }
+
+        // Play pleasant notification audio
+        const soundEl = document.getElementById('notification-sound');
+        if (soundEl) {
+            soundEl.currentTime = 0;
+            soundEl.play().catch(() => {});
         }
 
         // Check for active entry
@@ -3630,6 +3888,8 @@
             .is('clock_out', null)
             .maybeSingle();
 
+        const methodBadge = source.toUpperCase() === 'NFC' ? '📡 NFC' : '📷 QR';
+
         if (active) {
             // Clock OUT
             const clockOut = new Date().toISOString();
@@ -3637,11 +3897,11 @@
             clearInterval(elapsedInterval);
             currentActiveEntry = null;
             setClockedInState(false);
-            toast(`🔴 Clocked out from ${branch || 'branch'}!`);
+            toast(`🔴 Clocked out from ${branch || active.branch || 'branch'} (${methodBadge})!`);
 
             // Send email + in-app notification to company owner
-            sendClockNotificationEmail(session.id, session.company_id, 'out', active.branch || branch, clockOut);
-            notifyOwnerClockEvent(session, 'out', active.branch || branch, clockOut);
+            sendClockNotificationEmail(session.id, session.company_id, 'out', active.branch || branch, clockOut, source);
+            notifyOwnerClockEvent(session, 'out', active.branch || branch, clockOut, source);
         } else {
             // Clock IN
             const { data: entry, error } = await sb.from('time_entries').insert({
@@ -3657,11 +3917,11 @@
             currentActiveEntry = entry;
             setClockedInState(true);
             startElapsedTimer(new Date(entry.clock_in));
-            toast(`🟢 Clocked in at ${branch || 'branch'}!`);
+            toast(`🟢 Clocked in at ${branch || 'branch'} (${methodBadge})!`);
 
             // Send email + in-app notification to company owner
-            sendClockNotificationEmail(session.id, session.company_id, 'in', branch || null, entry.clock_in);
-            notifyOwnerClockEvent(session, 'in', branch || null, entry.clock_in);
+            sendClockNotificationEmail(session.id, session.company_id, 'in', branch || null, entry.clock_in, source);
+            notifyOwnerClockEvent(session, 'in', branch || null, entry.clock_in, source);
         }
 
         const { data: company } = await sb.from('companies').select('*').eq('id', session.company_id).single();
@@ -3670,8 +3930,13 @@
         await renderEarningsSummary(session, company);
     }
 
+    // Keep handleQRClockAction for backward compatibility
+    async function handleQRClockAction(qrText) {
+        await handleClockAction(qrText, 'qr');
+    }
+
     // ── Email Notification System ────────────────────────
-    async function sendClockNotificationEmail(userId, companyId, actionType, branch, time) {
+    async function sendClockNotificationEmail(userId, companyId, actionType, branch, time, method = 'NFC') {
         try {
             const { data: user } = await sb.from('users').select('name').eq('id', userId).single();
             if (!user) return;
@@ -3692,13 +3957,15 @@
                 hour12: true 
             });
 
-            const subject = `StaffSync Alert: ${user.name} clocked ${actionType.toUpperCase()}`;
+            const methodText = method.toUpperCase() === 'NFC' ? 'NFC Tag Tap' : 'QR Code Scan';
+            const subject = `StaffSync Alert: ${user.name} clocked ${actionType.toUpperCase()} via ${method.toUpperCase()}`;
             const message = `Hello,
 
 This is an automated notification from StaffSync.
 
 Staff member: ${user.name}
 Action: Clock ${actionType.toUpperCase()}
+Method: ${methodText}
 Branch: ${branch || 'N/A'}
 Time: ${formattedTime}
 Company: ${company.name}
@@ -3716,6 +3983,7 @@ StaffSync Team`;
                     _subject: subject,
                     "Staff Member": user.name,
                     "Action": actionType.toUpperCase(),
+                    "Method": methodText,
                     "Branch": branch || 'N/A',
                     "Time": formattedTime,
                     "Company": company.name,
@@ -3724,8 +3992,6 @@ StaffSync Team`;
             }).then(res => {
                 if (res.ok) {
                     console.log(`Clock notification email sent successfully to ${owner.email}`);
-                } else {
-                    console.error('Failed to send email notification:', res.statusText);
                 }
             }).catch(e => console.error('Fetch error for email notification:', e));
         } catch (e) {
@@ -3741,35 +4007,87 @@ StaffSync Team`;
     if (btnCloseQR) btnCloseQR.addEventListener('click', closeQRScanner);
 
     // ─────────────────────────────────────────────────────
-    // Handle QR URL params on page load (deep-link from QR)
+    // Handle NFC / QR URL params on page load (deep-link)
     // ─────────────────────────────────────────────────────
-    async function checkQRParam() {
+    function showClockPendingBanner(branch, method = 'nfc') {
+        const banner = $('#clock-pending-banner');
+        const titleEl = $('#clock-pending-title');
+        const descEl = $('#clock-pending-desc');
+        if (!banner) return;
+        banner.style.display = 'block';
+        if (titleEl) {
+            titleEl.textContent = method === 'nfc'
+                ? `📡 NFC Tag Detected: ${branch || 'Branch'}`
+                : `📱 QR Code Detected: ${branch || 'Branch'}`;
+        }
+        if (descEl) {
+            descEl.textContent = `Sign in to confirm and clock ${currentActiveEntry ? 'OUT' : 'IN'} instantly.`;
+        }
+    }
+
+    async function checkClockDeepLink() {
         const params = new URLSearchParams(window.location.search);
-        if (params.get('qr') !== '1') return;
+        const isQR = params.get('qr') === '1';
+        const isNFC = params.get('nfc') === '1';
+        if (!isQR && !isNFC) return;
+
         const cid = params.get('cid');
         const branch = params.get('b');
+        const method = isNFC ? 'nfc' : 'qr';
         if (!cid) return;
 
         // Clean the URL
         window.history.replaceState({}, document.title, window.location.pathname);
 
         // Store for after login
+        sessionStorage.setItem('pending_clock_cid', cid);
+        sessionStorage.setItem('pending_clock_branch', branch || '');
+        sessionStorage.setItem('pending_clock_method', method);
+        // Backwards compatibility
         sessionStorage.setItem('pending_qr_cid', cid);
         sessionStorage.setItem('pending_qr_branch', branch || '');
+
+        const session = getSession();
+        if (session) {
+            // Already logged in! Run immediately
+            setTimeout(() => processPendingClockAction(), 400);
+        } else {
+            // Show prominent notice on login card
+            showClockPendingBanner(branch, method);
+        }
+    }
+
+    async function processPendingClockAction() {
+        const cid = sessionStorage.getItem('pending_clock_cid') || sessionStorage.getItem('pending_qr_cid');
+        const branch = sessionStorage.getItem('pending_clock_branch') || sessionStorage.getItem('pending_qr_branch');
+        const method = sessionStorage.getItem('pending_clock_method') || 'qr';
+
+        if (!cid) return;
+
+        sessionStorage.removeItem('pending_clock_cid');
+        sessionStorage.removeItem('pending_clock_branch');
+        sessionStorage.removeItem('pending_clock_method');
+        sessionStorage.removeItem('pending_qr_cid');
+        sessionStorage.removeItem('pending_qr_branch');
+
+        const banner = $('#clock-pending-banner');
+        if (banner) banner.style.display = 'none';
+
+        const fakeUrl = `${window.location.origin}${window.location.pathname}?${method}=1&cid=${encodeURIComponent(cid)}&b=${encodeURIComponent(branch || '')}`;
+        toast(`Processing ${method.toUpperCase()} clock action…`);
+        setTimeout(() => handleClockAction(fakeUrl, method), 500);
+    }
+
+    // Backward compatibility aliases
+    async function checkQRParam() {
+        await checkClockDeepLink();
     }
 
     async function processPendingQR() {
-        const cid = sessionStorage.getItem('pending_qr_cid');
-        const branch = sessionStorage.getItem('pending_qr_branch');
-        if (!cid) return;
-        sessionStorage.removeItem('pending_qr_cid');
-        sessionStorage.removeItem('pending_qr_branch');
-        const fakeQR = `${window.location.origin}${window.location.pathname}?qr=1&cid=${encodeURIComponent(cid)}&b=${encodeURIComponent(branch)}`;
-        toast('Processing QR clock action…');
-        setTimeout(() => handleQRClockAction(fakeQR), 500);
+        await processPendingClockAction();
     }
 
-    checkQRParam();
+    checkClockDeepLink();
 
     // ─────────────────────────────────────────────────────
     // SWITCH COMPANY FEATURE

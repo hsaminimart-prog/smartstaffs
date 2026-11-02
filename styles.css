@@ -2514,3 +2514,254 @@ section.active {
         gap: 7px;
     }
 }
+
+/* ===================================================
+   NFC TAG CLOCK IN / OUT & THEME CUSTOMIZATION
+   =================================================== */
+
+/* Dual Clock Buttons Container */
+.clock-methods-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    padding: 20px 0 10px;
+}
+
+.clock-method-item {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* ===== NFC TAP BUTTON (Electric Cyan / Luxury Aura) ===== */
+.nfc-tap-btn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 185px;
+    height: 185px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    background: radial-gradient(circle at 40% 30%, rgba(56, 189, 248, 0.32), rgba(14, 116, 144, 0.2) 60%, rgba(8, 9, 13, 0.85));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.4), 0 8px 36px rgba(56, 189, 248, 0.28), 0 0 60px rgba(56, 189, 248, 0.12) inset;
+    color: white;
+    overflow: hidden;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.nfc-tap-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.7), 0 14px 44px rgba(56, 189, 248, 0.45);
+}
+
+.nfc-tap-btn:active {
+    transform: scale(0.97);
+}
+
+.nfc-tap-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(224, 242, 254, 0.2) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.nfc-scan-rings {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.nfc-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1.5px solid rgba(56, 189, 248, 0.5);
+    animation: nfcRingPulse 2.4s ease-out infinite;
+}
+
+.nfc-ring-1 {
+    inset: -8px;
+    animation-delay: 0s;
+    border-color: rgba(56, 189, 248, 0.55);
+}
+
+.nfc-ring-2 {
+    inset: -20px;
+    animation-delay: 0.7s;
+    border-color: rgba(56, 189, 248, 0.35);
+}
+
+.nfc-ring-3 {
+    inset: -34px;
+    animation-delay: 1.4s;
+    border-color: rgba(56, 189, 248, 0.18);
+}
+
+@keyframes nfcRingPulse {
+    0% {
+        opacity: 0.9;
+        transform: scale(0.95);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.15);
+    }
+}
+
+.nfc-scan-icon {
+    position: relative;
+    z-index: 2;
+    color: #e0f2fe;
+    filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.8));
+}
+
+.nfc-scan-label {
+    position: relative;
+    z-index: 2;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #ffffff;
+    text-align: center;
+    line-height: 1.25;
+    padding: 0 14px;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+}
+
+.nfc-scan-sublabel {
+    position: relative;
+    z-index: 2;
+    font-size: 9.5px;
+    color: #bae6fd;
+    opacity: 0.85;
+    text-align: center;
+    padding: 0 12px;
+}
+
+/* NFC Clocked IN emerald state */
+.nfc-tap-btn.clocked-in {
+    background: radial-gradient(circle at 40% 30%, rgba(16, 185, 129, 0.38), rgba(5, 150, 105, 0.2) 60%, rgba(8, 9, 13, 0.85));
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.55), 0 8px 36px rgba(16, 185, 129, 0.35);
+}
+
+.nfc-tap-btn.clocked-in .nfc-ring-1 {
+    border-color: rgba(16, 185, 129, 0.6);
+}
+
+.nfc-tap-btn.clocked-in .nfc-ring-2 {
+    border-color: rgba(52, 211, 153, 0.4);
+}
+
+.nfc-tap-btn.clocked-in .nfc-ring-3 {
+    border-color: rgba(16, 185, 129, 0.2);
+}
+
+.nfc-tap-btn.clocked-in .nfc-scan-icon {
+    filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.8));
+}
+
+.nfc-tap-btn.clocked-in .nfc-scan-sublabel {
+    color: #a7f3d0;
+}
+
+/* Adjust QR Scan button size slightly to fit nicely side by side */
+.qr-scan-btn {
+    width: 185px;
+    height: 185px;
+}
+
+/* NFC Radar in Modals */
+.nfc-modal-radar-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 14px 0;
+}
+
+.nfc-radar-circle {
+    position: relative;
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(56, 189, 248, 0.16) 0%, transparent 70%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nfc-radar-pulse {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid rgba(56, 189, 248, 0.6);
+    animation: nfcRadarPulseAnim 2.2s ease-out infinite;
+}
+
+.nfc-radar-pulse-2 {
+    animation-delay: 0.7s;
+    border-color: rgba(56, 189, 248, 0.4);
+}
+
+.nfc-radar-pulse-3 {
+    animation-delay: 1.4s;
+    border-color: rgba(56, 189, 248, 0.2);
+}
+
+@keyframes nfcRadarPulseAnim {
+    0% {
+        transform: scale(0.6);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* NFC Branch Card in Owner Hub */
+.nfc-branch-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: border-color var(--duration) var(--ease);
+}
+
+.nfc-branch-card:hover {
+    border-color: rgba(56, 189, 248, 0.4);
+}
+
+.nfc-url-box {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+.nfc-url-input {
+    background: transparent;
+    border: none;
+    color: #38bdf8;
+    font-family: monospace;
+    font-size: 11px;
+    flex: 1;
+    outline: none;
+    text-overflow: ellipsis;
+}

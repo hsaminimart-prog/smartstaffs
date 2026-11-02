@@ -44,6 +44,11 @@
                         <img src="logo.png" alt="SmartStaffs Logo" class="brand-logo-img">
                         <p class="tagline">Smart Staff Management</p>
                     </div>
+                    <!-- NFC / QR Deep Link Pending Notice -->
+                    <div id="clock-pending-banner" style="display:none; background:rgba(56, 189, 248, 0.12); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 14px; margin-bottom:16px; text-align:center;">
+                        <div style="font-weight:700; font-size:13px; color:#38bdf8;" id="clock-pending-title">📡 NFC Tag Detected!</div>
+                        <div style="font-size:12px; color:var(--text-secondary); margin-top:3px;" id="clock-pending-desc">Sign in to complete your Clock In / Out.</div>
+                    </div>
                     <form id="form-login" autocomplete="off">
                         <div class="input-group">
                             <label for="login-email">Email or Mobile</label>
@@ -394,7 +399,7 @@
                             <span class="nav-icon">📋</span> Attendance
                         </a></li>
                     <li><a href="#" class="nav-link" data-tab="owner-qrcodes">
-                            <span class="nav-icon">📱</span> QR Codes
+                            <span class="nav-icon">📡</span> QR &amp; NFC Tags
                         </a></li>
                 </ul>
                 <div class="sidebar-footer">
@@ -586,14 +591,51 @@
                     </div>
                 </div>
 
-                <!-- Owner Tab: QR Codes -->
+                <!-- Owner Tab: QR & NFC Codes -->
                 <div class="tab-content" id="tab-owner-qrcodes">
-                    <div class="card glass" style="margin-bottom:16px;">
-                        <h3 style="margin-bottom:4px;">📱 QR Codes for Clock In/Out</h3>
-                        <p style="color:var(--text-secondary); font-size:var(--fs-sm);">Each QR code is unique to a branch. Staff scan it to instantly clock in or out.</p>
+                    <!-- Top Hub Header -->
+                    <div class="actions-bar" style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                        <div>
+                            <h3 style="margin-bottom:4px;">📡 Contactless Clock In/Out Hub</h3>
+                            <p style="color:var(--text-secondary); font-size:var(--fs-sm);">Unique branch NFC Tag links and QR codes for contactless staff attendance.</p>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" class="btn btn-sm btn-outline" id="btn-open-nfc-guide">📖 NFC Setup Guide</button>
+                        </div>
                     </div>
-                    <div id="qr-codes-container" style="display:flex; flex-wrap:wrap; gap:20px;">
-                        <p class="empty-state">Loading QR codes…</p>
+
+                    <!-- NFC Tags Section -->
+                    <div class="card glass" style="margin-bottom:20px; border-color:rgba(56, 189, 248, 0.3);">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+                            <div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:20px;">📡</span>
+                                    <h4 style="font-size:16px; margin:0; color:#38bdf8;">Branch NFC Tag Links</h4>
+                                    <span class="badge" style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-size:10px;">Tap to Clock</span>
+                                </div>
+                                <p style="color:var(--text-secondary); font-size:var(--fs-xs); margin-top:4px;">
+                                    Copy these links and write them to any NFC stickers or keyfobs (NTAG213/215/216). When staff tap the physical tag with their phone, it will instantly clock them in or out!
+                                </p>
+                            </div>
+                        </div>
+                        <div id="nfc-tags-container" style="display:flex; flex-direction:column; gap:12px;">
+                            <p class="empty-state">Loading NFC tag links…</p>
+                        </div>
+                    </div>
+
+                    <!-- QR Codes Section -->
+                    <div class="card glass" style="margin-bottom:16px;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                            <span style="font-size:20px;">📱</span>
+                            <h4 style="font-size:16px; margin:0;">Branch QR Codes</h4>
+                            <span class="badge" style="font-size:10px;">Scan to Clock</span>
+                        </div>
+                        <p style="color:var(--text-secondary); font-size:var(--fs-xs); margin-bottom:16px;">
+                            Print and display these QR codes at your branch locations for staff who prefer scanning with their phone camera.
+                        </p>
+                        <div id="qr-codes-container" style="display:flex; flex-wrap:wrap; gap:20px;">
+                            <p class="empty-state">Loading QR codes…</p>
+                        </div>
                     </div>
                 </div>
 
@@ -761,29 +803,56 @@
                             <div id="btn-clock-in" style="display:none;"></div>
                             <div id="btn-clock-out" style="display:none;"></div>
 
-                            <!-- QR Scan Button -->
-                            <div class="qr-scan-btn-wrapper">
-                                <button id="btn-open-qr-scanner" class="qr-scan-btn">
-                                    <div class="qr-scan-rings">
-                                        <div class="qr-ring qr-ring-1"></div>
-                                        <div class="qr-ring qr-ring-2"></div>
-                                        <div class="qr-ring qr-ring-3"></div>
-                                    </div>
-                                    <div class="qr-scan-icon">
-                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                            <rect x="3" y="3" width="7" height="7" rx="1"/>
-                                            <rect x="14" y="3" width="7" height="7" rx="1"/>
-                                            <rect x="3" y="14" width="7" height="7" rx="1"/>
-                                            <rect x="14" y="14" width="3" height="3" rx="0.5"/>
-                                            <rect x="19" y="14" width="2" height="2" rx="0.5"/>
-                                            <rect x="14" y="19" width="2" height="2" rx="0.5"/>
-                                            <rect x="18" y="18" width="3" height="3" rx="0.5"/>
-                                        </svg>
-                                    </div>
-                                    <span class="qr-scan-label">Tap to Scan QR &amp; Clock In/Out</span>
-                                    <span class="qr-scan-sublabel" id="qr-btn-status">Point camera at your branch QR code</span>
-                                </button>
+                            <!-- Dual Clock In/Out Methods: NFC Tag & QR Code -->
+                            <div class="clock-methods-container">
+                                <!-- NFC Tap Button -->
+                                <div class="clock-method-item">
+                                    <button id="btn-tap-nfc" class="nfc-tap-btn" type="button">
+                                        <div class="nfc-scan-rings">
+                                            <div class="nfc-ring nfc-ring-1"></div>
+                                            <div class="nfc-ring nfc-ring-2"></div>
+                                            <div class="nfc-ring nfc-ring-3"></div>
+                                        </div>
+                                        <div class="nfc-scan-icon">
+                                            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M6 8.5a6.5 6.5 0 1 1 12 3.8"></path>
+                                                <path d="M8.5 11a3.5 3.5 0 1 1 7 0"></path>
+                                                <circle cx="12" cy="12" r="1" fill="currentColor"></circle>
+                                                <path d="M3.5 6a10.5 10.5 0 0 1 17 0"></path>
+                                            </svg>
+                                        </div>
+                                        <span class="nfc-scan-label">📡 Tap NFC Tag</span>
+                                        <span class="nfc-scan-sublabel" id="nfc-btn-status">Hold phone near branch NFC tag</span>
+                                    </button>
+                                </div>
+
+                                <!-- QR Scan Button -->
+                                <div class="clock-method-item">
+                                    <button id="btn-open-qr-scanner" class="qr-scan-btn" type="button">
+                                        <div class="qr-scan-rings">
+                                            <div class="qr-ring qr-ring-1"></div>
+                                            <div class="qr-ring qr-ring-2"></div>
+                                            <div class="qr-ring qr-ring-3"></div>
+                                        </div>
+                                        <div class="qr-scan-icon">
+                                            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                                <rect x="3" y="3" width="7" height="7" rx="1"/>
+                                                <rect x="14" y="3" width="7" height="7" rx="1"/>
+                                                <rect x="3" y="14" width="7" height="7" rx="1"/>
+                                                <rect x="14" y="14" width="3" height="3" rx="0.5"/>
+                                                <rect x="19" y="14" width="2" height="2" rx="0.5"/>
+                                                <rect x="14" y="19" width="2" height="2" rx="0.5"/>
+                                                <rect x="18" y="18" width="3" height="3" rx="0.5"/>
+                                            </svg>
+                                        </div>
+                                        <span class="qr-scan-label">📷 Scan QR Code</span>
+                                        <span class="qr-scan-sublabel" id="qr-btn-status">Point camera at branch QR code</span>
+                                    </button>
+                                </div>
                             </div>
+                            <p style="text-align:center; font-size:11px; color:var(--text-muted); margin-top:8px;">
+                                💡 Tip: You can also tap physical branch NFC tags directly from lock screen or home screen.
+                            </p>
                         </div>
                     </div>
                     <div class="card glass" id="today-entries">
@@ -1158,6 +1227,105 @@
                 <div id="qr-reader" style="width:100%; border-radius:12px; overflow:hidden;"></div>
                 <p id="qr-scan-status" style="margin-top:12px; color:var(--text-secondary); font-size:var(--fs-sm);"></p>
                 <button class="btn btn-outline" id="btn-close-qr-scanner" style="margin-top:16px; width:100%;">✕ Cancel</button>
+            </div>
+        </div>
+
+        <!-- ========== NFC SCANNER MODAL ========== -->
+        <div id="modal-nfc-scanner" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.85); align-items:center; justify-content:center; flex-direction:column; gap:16px;">
+            <div class="card glass" style="width:min(360px,92vw); padding:28px 24px; text-align:center;">
+                <div class="nfc-modal-radar-wrapper" style="margin-bottom:16px;">
+                    <div class="nfc-radar-circle">
+                        <div class="nfc-radar-pulse nfc-radar-pulse-1"></div>
+                        <div class="nfc-radar-pulse nfc-radar-pulse-2"></div>
+                        <div class="nfc-radar-pulse nfc-radar-pulse-3"></div>
+                        <div class="nfc-radar-icon">
+                            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M6 8.5a6.5 6.5 0 1 1 12 3.8"></path>
+                                <path d="M8.5 11a3.5 3.5 0 1 1 7 0"></path>
+                                <circle cx="12" cy="12" r="1.5" fill="#38bdf8"></circle>
+                                <path d="M3.5 6a10.5 10.5 0 0 1 17 0"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <h3 style="margin-bottom:6px; color:#38bdf8;" id="nfc-scanner-title">📡 Ready to Scan NFC</h3>
+                <p style="color:var(--text-secondary); font-size:var(--fs-sm); margin-bottom:12px;" id="nfc-scanner-desc">
+                    Hold the top or back of your smartphone against the branch NFC tag.
+                </p>
+                <div id="nfc-scan-status-text" style="font-size:12px; color:var(--gold-light); min-height:18px;">Waiting for NFC tap…</div>
+                <button class="btn btn-outline" id="btn-close-nfc-scanner" style="margin-top:18px; width:100%;">✕ Cancel</button>
+            </div>
+        </div>
+
+        <!-- ========== NFC WRITE MODAL (Owner) ========== -->
+        <div id="modal-nfc-write" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.85); align-items:center; justify-content:center; flex-direction:column; gap:16px;">
+            <div class="card glass" style="width:min(380px,92vw); padding:28px 24px; text-align:center;">
+                <div class="nfc-modal-radar-wrapper" style="margin-bottom:16px;">
+                    <div class="nfc-radar-circle" style="background:radial-gradient(circle, rgba(212,175,55,0.2) 0%, transparent 70%);">
+                        <div class="nfc-radar-pulse nfc-radar-pulse-1" style="border-color:rgba(212,175,55,0.6);"></div>
+                        <div class="nfc-radar-pulse nfc-radar-pulse-2" style="border-color:rgba(212,175,55,0.4);"></div>
+                        <div class="nfc-radar-icon">
+                            <span style="font-size:36px;">✍️</span>
+                        </div>
+                    </div>
+                </div>
+                <h3 style="margin-bottom:6px;">Program NFC Tag</h3>
+                <p style="color:var(--text-secondary); font-size:var(--fs-sm); margin-bottom:8px;">
+                    Branch: <strong id="nfc-write-branch-name" style="color:var(--gold-bright);">Main</strong>
+                </p>
+                <p style="color:var(--text-muted); font-size:12px; margin-bottom:16px;">
+                    Hold a blank or rewritable NFC tag (NTAG213/215/216) to the back of this device…
+                </p>
+                <div id="nfc-write-status-text" style="font-size:12px; color:var(--text-secondary); min-height:18px;">Writing in progress…</div>
+                <button class="btn btn-outline" id="btn-close-nfc-write" style="margin-top:18px; width:100%;">✕ Cancel</button>
+            </div>
+        </div>
+
+        <!-- ========== NFC SETUP GUIDE MODAL ========== -->
+        <div id="modal-nfc-guide" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.85); align-items:center; justify-content:center; padding:16px;">
+            <div class="card glass" style="width:min(520px,94vw); max-height:88vh; overflow-y:auto; padding:24px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:24px;">📡</span>
+                        <h3 style="margin:0;">NFC Tag Setup &amp; How It Works</h3>
+                    </div>
+                    <button class="btn btn-sm btn-outline" id="btn-close-nfc-guide" style="padding:4px 10px;">✕</button>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:16px; font-size:13px; color:var(--text-secondary); line-height:1.6;">
+                    <div style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25); border-radius:12px; padding:14px;">
+                        <h4 style="color:#38bdf8; margin-bottom:6px; font-size:14px;">✨ What is an NFC Tag?</h4>
+                        <p>NFC (Near Field Communication) tags are small adhesive stickers or keyfobs that you place at your workplace (e.g. entrance, reception desk, counter). When staff tap the tag with their phone, it instantly clocks them in or out without opening camera!</p>
+                    </div>
+
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:14px;">
+                        <h4 style="color:var(--text-primary); margin-bottom:6px; font-size:14px;">🛒 1. Which Tags to Buy</h4>
+                        <p>Any standard <strong>NTAG213, NTAG215, or NTAG216</strong> NFC tag sticker or card will work. You can get packs of 10 for under £5 on Amazon, eBay, or AliExpress.</p>
+                    </div>
+
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:14px;">
+                        <h4 style="color:var(--text-primary); margin-bottom:6px; font-size:14px;">✍️ 2. How to Program the Tag</h4>
+                        <ul style="padding-left:18px; margin-top:6px; display:flex; flex-direction:column; gap:6px;">
+                            <li><strong>Method A (Direct in Browser):</strong> If you use Chrome on Android, click the <em>"✍️ Write to Tag"</em> button in the Owner NFC Hub and tap your tag to the back of your phone.</li>
+                            <li><strong>Method B (Free App - iOS &amp; Android):</strong>
+                                <ol style="padding-left:16px; margin-top:4px;">
+                                    <li>Copy your branch NFC link using the <em>"📋 Copy NFC Link"</em> button.</li>
+                                    <li>Download the free <strong>NFC Tools</strong> app from the App Store or Google Play.</li>
+                                    <li>Open NFC Tools &gt; tap <strong>Write</strong> &gt; tap <strong>Add a record</strong> &gt; select <strong>Custom URL / URI</strong>.</li>
+                                    <li>Paste the copied link and tap <strong>OK</strong> &gt; tap <strong>Write</strong> and touch the tag to your phone.</li>
+                                </ol>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:14px;">
+                        <h4 style="color:var(--text-primary); margin-bottom:6px; font-size:14px;">📱 3. How Staff Use It</h4>
+                        <p><strong>iPhones (XS, XR, 11, 12, 13, 14, 15, 16+):</strong> Staff just touch the top of their iPhone to the sticker. A notification pops up—tapping it instantly opens StaffSync and clocks them in or out!</p>
+                        <p style="margin-top:6px;"><strong>Android Phones:</strong> Ensure NFC is enabled in settings. Tap the back of the phone to the sticker.</p>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="btn-close-nfc-guide-btn" style="width:100%; margin-top:20px;">Got It 👍</button>
             </div>
         </div>
 
